@@ -18,6 +18,7 @@ assert.equal(buscar(agua, 'no entiendo la evaporacion')[1].parte, 'Ejemplo')
 assert.match(textos(plantas, '¿Qué es la fotosíntesis?'), /^Las hojas aprovechan la luz.*fotosíntesis\.$/) // «Este proceso…» trae la frase de antes
 assert.match(textos(plantas, 'que absorben las raices'), /También absorben agua/)
 assert.match(textos(agua, 'Que papel toma el sol?'), /^El sol calienta/) // las palabras que no salen en la lección no tapan a «sol»
+assert.match(textos(agua, 'por que llueve'), /llover/) // «llueve» encuentra «llover» aunque cambien las vocales
 for (const duda of ['¿Qué son los volcanes?', 'hola', '', '¿?']) assert.deepEqual(buscar(agua, duda), [], duda) // no se inventa nada
 assert.deepEqual(buscar({}, 'agua'), []) // lección sin textos
 // Pista del test: la pregunta y su opción buena llevan a la frase de la lección donde está.

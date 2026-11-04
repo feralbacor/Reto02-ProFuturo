@@ -778,6 +778,11 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
             <input id={`porque-${i}`} className="campo" value={p.porque} onChange={e => cambiarPregunta(i, { porque: e.target.value })} style={{ fontSize: 18 }} />
           </fieldset>
         ))}
+        {/* va al final: las respuestas de los alumnos guardan la posición de cada pregunta. La API admite hasta 10. */}
+        {leccion.preguntas.length < 10 && (
+          <button onClick={() => cambiar('preguntas', [...leccion.preguntas, { pregunta: '', opciones: ['', '', '', ''], correcta: 0, porque: '' }])}
+            className="boton boton-secundario boton-ancho">{t('+ Añadir una pregunta')}</button>
+        )}
       </section>
 
       <Aviso texto={aviso.texto} color={aviso.color} />
