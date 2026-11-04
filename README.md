@@ -6,7 +6,7 @@ Una clase digital para aprender cuando Internet es lento, caro o no existe. El p
 
 La aplicación y las lecciones se guardan en el móvil. Las respuestas y las dudas esperan allí hasta recuperar la conexión con el ordenador de la clase. Se envían automáticamente al abrir la app, volver la red y terminar una actividad; también en segundo plano con la app cerrada cuando el navegador lo permite. No se garantiza el mismo soporte ni un plazo con la app cerrada en todos los móviles.
 
-La IA corre en el ordenador de la clase con **Ollama y qwen3-vl:4b-instruct**, sin necesitar Internet después de descargar el modelo. El móvil desconectado sigue con lo descargado; una duda espera a llegar al ordenador para recibir respuesta. Una wifi local puede conectar los dispositivos sin ofrecer Internet.
+La IA corre en el ordenador de la clase con **Ollama y qwen3-vl:4b-instruct**, sin necesitar Internet después de descargar el modelo. El móvil desconectado busca al momento fragmentos de Leer y Ejemplo relacionados con la duda y muestra su origen. Es búsqueda de texto, sin ejecutar IA en el móvil. La duda queda pendiente de envío para recibir después la respuesta de la IA del ordenador; si no encuentra fragmentos, conserva el aviso de espera. Una wifi local puede conectar los dispositivos sin ofrecer Internet.
 
 ## Arranque
 

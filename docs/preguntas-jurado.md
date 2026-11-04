@@ -100,7 +100,7 @@ Está instruida para contestar solo con la lección y responder «Eso no está e
 
 ## ¿Cuándo responde «Tengo una duda» si el móvil está offline?
 
-La duda se guarda y muestra «Se enviará cuando haya conexión». El ordenador la recibe al sincronizar y ejecuta la IA local. El equipo midió respuestas de unos 5–10 s; si está apagada o tarda, la duda continúa pendiente y el profe puede responder desde «Cambiar la respuesta». El móvil desconectado no ejecuta el tutor. Tras una corrección aparece «Te lo ha contestado tu profe.».
+La duda se guarda y muestra «Se enviará cuando haya conexión». El ordenador la recibe al sincronizar y ejecuta la IA local. El equipo midió respuestas de unos 5–10 s; si está apagada o tarda, la duda continúa pendiente y el profe puede responder desde «Cambiar la respuesta». Mientras espera, el móvil busca fragmentos relacionados en la lectura y el ejemplo descargados y muestra su origen. Esta búsqueda funciona sin red ni IA; no genera una explicación nueva. Si no encuentra fragmentos, mantiene el aviso de espera. La respuesta generada por IA sigue necesitando acceso al ordenador del aula. Tras una corrección aparece «Te lo ha contestado tu profe.».
 
 ## ¿En qué os diferenciáis de otros tutores sin conexión, como Juza AI (Kenia) o Nambi (Uganda)?
 

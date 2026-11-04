@@ -18,7 +18,7 @@ El estudiante entra con usuario y contraseña. No pedimos email ni apellidos. Va
 
 Mirad el móvil: esta lección ya está descargada. Tiene tres pasos: Leer, Ejemplo y Preguntas. Cortamos la conexión y seguimos trabajando. La corrección es inmediata y las respuestas se guardan en el móvil.
 
-La alumna también puede pulsar «Tengo una duda». La escribe y aparece «Se enviará cuando haya conexión».
+La alumna también puede pulsar «Tengo una duda». La escribe y el móvil muestra fragmentos relacionados de la lección, sin red ni IA. Si no encuentra ninguno, mantiene «Se enviará cuando haya conexión».
 
 Volvemos a conectar con el aula. Las respuestas y la pregunta se envían solas. Cuando llega la respuesta, aparece junto a la duda. El profesor puede verla en «Dudas de tus alumnos» y cambiarla. Entonces la alumna ve «Te lo ha contestado tu profe».
 
@@ -28,7 +28,7 @@ En «Ver notas», el docente consulta los resultados recibidos y quién puede ne
 
 El móvil guarda la aplicación, las lecciones, las respuestas y las dudas pendientes. El ordenador del aula ejecuta Ollama con qwen3-vl:4b-instruct, descargado previamente. Los móviles no necesitan ejecutar ese modelo.
 
-Una wifi local permite compartir información sin Internet. Si tampoco hay conexión con el ordenador, el estudiante continúa con lo descargado. La pregunta espera: el tutor no se ejecuta en el móvil desconectado.
+Una wifi local permite compartir información sin Internet. Si tampoco hay conexión con el ordenador, el estudiante continúa con lo descargado. La búsqueda de fragmentos funciona en el móvil desconectado; la respuesta de IA espera al ordenador.
 
 ## 2:20–2:45 · Impacto
 
