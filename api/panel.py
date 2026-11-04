@@ -87,5 +87,7 @@ def quitar_alumno(codigo: str, alumno_id: str):
             raise HTTPException(404, 'El alumno ya no está en esta clase.')
         c.execute('DELETE FROM respuestas WHERE alumno = ? AND leccion_id IN (SELECT id FROM lecciones WHERE clase = ?)',
                   (alumno_id, codigo))
+        c.execute('DELETE FROM dudas WHERE alumno = ? AND leccion_id IN (SELECT id FROM lecciones WHERE clase = ?)',
+                  (alumno_id, codigo))
         c.execute('DELETE FROM matriculas WHERE clase = ? AND alumno = ?', (codigo, alumno_id))
     return {'ok': True}

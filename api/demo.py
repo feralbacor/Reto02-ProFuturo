@@ -71,6 +71,16 @@ def crear_demo(c, fecha=None):
                 c.execute('INSERT OR IGNORE INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, ?, ?, ?)',
                           (identificador(f'respuesta-{i}-{j}-{k}'), alumno, identificador(f'leccion-{j}'), k, opcion, momento))
 
+    dudas = [
+        (0, 0, '¿Cómo se llama cuando el agua pasa a vapor?', 'Se llama evaporación.', 0),
+        (1, 0, '¿Qué ocurre cuando el vapor se enfría?', 'Se forman gotas pequeñas que se juntan en las nubes.', 1),
+        (2, 1, '¿Qué absorben las raíces del suelo?', None, 0),
+    ]
+    for i, (alumno, leccion_id, pregunta, respuesta, corregida) in enumerate(dudas):
+        c.execute('INSERT OR IGNORE INTO dudas (id, alumno, leccion_id, pregunta, fecha, respuesta, corregida) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                  (identificador(f'duda-{i}'), identificador(f'alumno-{alumno}'), identificador(f'leccion-{leccion_id}'),
+                   pregunta, fecha.isoformat(timespec='seconds'), respuesta, corregida))
+
 
 def comprobar():
     original = main.DB_PATH
@@ -89,6 +99,10 @@ def comprobar():
                 assert c.execute('SELECT COUNT(*) FROM matriculas WHERE clase = ?', (CODIGO,)).fetchone()[0] == 6
                 assert c.execute('SELECT COUNT(*) FROM lecciones').fetchone()[0] == 2
                 assert c.execute('SELECT COUNT(*) FROM respuestas').fetchone()[0] == 60
+                assert c.execute('SELECT COUNT(*) FROM dudas').fetchone()[0] == 3
+                assert c.execute('SELECT respuesta IS NOT NULL AND corregida = 0 FROM dudas WHERE id = ?', (identificador('duda-0'),)).fetchone()[0]
+                assert c.execute('SELECT respuesta IS NOT NULL AND corregida = 1 FROM dudas WHERE id = ?', (identificador('duda-1'),)).fetchone()[0]
+                assert c.execute('SELECT respuesta IS NULL FROM dudas WHERE id = ?', (identificador('duda-2'),)).fetchone()[0]
                 assert all(main.leccion_valida(l) for l in LECCIONES)
             main.comprobar_pin(CODIGO, '1234')
             for i, nombre in enumerate(['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Farid']):
@@ -99,6 +113,7 @@ def comprobar():
             with closing(main.db()) as c, c:
                 main.guardar_pin(c, CODIGO, '5678')
                 main.guardar_contrasena(c, identificador('alumno-3'), 'nueva1234')
+                c.execute('UPDATE dudas SET respuesta = ?, corregida = 1 WHERE id = ?', ('Respuesta revisada durante el ensayo.', identificador('duda-2')))
                 antes = '\n'.join(c.iterdump())
                 crear_demo(c)
                 assert '\n'.join(c.iterdump()) == antes
@@ -106,7 +121,7 @@ def comprobar():
             assert main.entrar_alumno(main.Entrar(usuario='aula23diego', contrasena='nueva1234'))['id'] == identificador('alumno-3')
     finally:
         main.DB_PATH = original
-    print('Correcto: demo repetible, PIN, seis accesos, colisiones y contraseñas existentes conservadas.')
+    print('Correcto: demo repetible, tres dudas, PIN, seis accesos, colisiones y correcciones existentes conservadas.')
 
 
 if __name__ == '__main__':
