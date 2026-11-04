@@ -140,5 +140,5 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - La API necesita **Python 3.11** (`api/.venv`). Con el Python 3.9 de Xcode no arranca y la web se queda cargando.
 - **Librería nueva: `pypdf`**, solo para los PDF. En cada ordenador que arranque la API: `cd api && source .venv/bin/activate && pip install pypdf`. Sin ella, todo lo demás funciona y al subir un PDF sale «Para leer PDF falta pypdf…».
 - Para leer fotos y preparar lecciones hace falta **Ollama** encendido con `qwen3-vl:4b-instruct`.
-- **Niveles altos y túnel de Cloudflare:** el túnel corta las peticiones que tardan más de unos 100 s. Desde el móvil por el túnel, los niveles altos dan error (la lección se sigue preparando en el ordenador y aparece al recargar la clase). En el Mac (localhost) no pasa.
+- **Niveles altos y túnel de Cloudflare:** el túnel corta las peticiones que tardan más de unos 100 s. Desde el móvil por el túnel, los niveles altos acaban en «Por preparar», pero la lección se sigue preparando en el ordenador: aparece al recargar la clase, y «Preparar ahora» devuelve esa misma (mismo id), sin repetirla. En el Mac (localhost) no pasa.
 - Sin hacer: preparar lecciones o enviar cambios con la app cerrada y un tiempo máximo de espera si el servidor no contesta.
