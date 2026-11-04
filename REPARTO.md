@@ -58,11 +58,12 @@ Tablas de `api/mochila.db`:
 - `lecciones(id, clase, titulo, contenido, fecha, publicada)`. `contenido` es JSON: `{titulo, materia, lectura_facil, explicacion_ejemplo, preguntas: [{pregunta, opciones[4], correcta (0-3), porque}]}`. `materia` (p. ej. «Ciencias») puede faltar en lecciones antiguas: entonces es «General».
 - `respuestas(id, alumno, leccion_id, pregunta, respuesta, fecha)`. `pregunta` y `respuesta` son posiciones (0, 1, 2…); `alumno` es `alumnos.id`; `fecha` en ISO. Llegan del móvil con `POST /api/sync`.
 - `pines_profe(clase, sal, hash)`: el PIN del profe de cada clase (solo el hash). **No se lee desde fuera de `main.py`.** Una clase sin fila aquí está abierta (sin PIN).
+- `cuentas_alumno(alumno, usuario, sal, hash)`: usuario único (minúsculas, letras y números) y hash de la contraseña de cada alumno. **No se lee desde fuera de `main.py`.** Los alumnos de antes (y los de `demo.py`) no tienen fila: salen en el panel, pero no pueden entrar en el móvil. Para darles usuario desde un script: `main.guardar_contrasena(c, alumno_id, 'contraseña', 'usuario')`.
 - Para crear o cambiar filas desde un script, nombra las columnas en el `INSERT` (así no se rompe si un día se añade una).
 
 Rutas que ya hay:
-- Abiertas: `GET /api/salud`, `GET|POST /api/clases` (crear pide `{nombre, pin}`), `POST /api/clases/{codigo}/unirse`, `POST /api/sync`.
-- **Solo el profe** (piden la cabecera `X-Pin-Profe` si la clase tiene PIN; `api()` de `comun.jsx` la pone sola): `GET /api/clases/{codigo}`, `POST /api/clases/{codigo}/leer-foto`, `POST /api/clases/{codigo}/lecciones`, `GET|PUT /api/clases/{codigo}/lecciones/{id}` y **todas las de `panel.py`**, que por eso tienen que llevar `{codigo}` en la ruta.
+- Abiertas: `GET /api/salud`, `GET|POST /api/clases` (crear pide `{nombre, pin}`), `POST /api/alumnos` (crear usuario: `{nombre, usuario, contrasena, clase}`), `POST /api/alumnos/entrar` (`{usuario, contrasena}` → `{id, usuario, nombre}`), `POST /api/clases/{codigo}/unirse` (`{alumno_id}`; solo alumnos con usuario), `POST /api/sync`.
+- **Solo el profe** (piden la cabecera `X-Pin-Profe` si la clase tiene PIN; `api()` de `comun.jsx` la pone sola): `GET /api/clases/{codigo}`, `POST /api/clases/{codigo}/leer-foto`, `POST /api/clases/{codigo}/lecciones`, `GET|PUT /api/clases/{codigo}/lecciones/{id}`, `PUT /api/clases/{codigo}/alumnos/{id}/contrasena` y **todas las de `panel.py`**, que por eso tienen que llevar `{codigo}` en la ruta.
 
 ## 5. Peticiones
 

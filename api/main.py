@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS pines_profe (
     sal TEXT NOT NULL,
     hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cuentas_alumno (
+    alumno TEXT PRIMARY KEY REFERENCES alumnos(id),
+    usuario TEXT NOT NULL UNIQUE,
+    sal TEXT NOT NULL,
+    hash TEXT NOT NULL
+);
 """
 
 
@@ -114,7 +120,20 @@ def guardar_pin(c, codigo: str, pin: str):
     c.execute("INSERT OR REPLACE INTO pines_profe (clase, sal, hash) VALUES (?, ?, ?)", (codigo, sal, hash_pin(pin, sal)))
 
 
-FALLOS_PIN = {}  # ponytail: en memoria (se pierde al reiniciar); basta para frenar a quien prueba PINes a mano
+FALLOS = {}  # ponytail: en memoria (se pierde al reiniciar); basta para frenar a quien prueba PINes o contraseñas a mano
+
+
+def comprobar_secreto(clave: str, secreto: str, fila, mensaje_malo: str):
+    """Compara con el hash guardado. Tras 5 fallos seguidos con la misma clave, 1 minuto sin poder probar."""
+    fallos, bloqueado_hasta = FALLOS.get(clave, (0, 0))
+    if time.time() < bloqueado_hasta:
+        raise HTTPException(429, "Demasiados intentos fallidos. Espera un minuto.")
+    if fila and secrets.compare_digest(hash_pin(secreto, fila["sal"]), fila["hash"]):
+        FALLOS.pop(clave, None)
+        return
+    fallos += 1
+    FALLOS[clave] = (0, time.time() + 60) if fallos >= 5 else (fallos, 0)
+    raise HTTPException(401, mensaje_malo)
 
 
 def comprobar_pin(codigo: str, x_pin_profe: str | None = Header(default=None)):
@@ -124,20 +143,43 @@ def comprobar_pin(codigo: str, x_pin_profe: str | None = Header(default=None)):
         fila = c.execute("SELECT sal, hash FROM pines_profe WHERE clase = ?", (codigo,)).fetchone()
     if not fila:
         return
-    fallos, bloqueado_hasta = FALLOS_PIN.get(codigo, (0, 0))
-    if time.time() < bloqueado_hasta:
-        raise HTTPException(429, "Demasiados intentos con un PIN equivocado. Espera un minuto.")
-    if x_pin_profe and secrets.compare_digest(hash_pin(x_pin_profe, fila["sal"]), fila["hash"]):
-        FALLOS_PIN.pop(codigo, None)
-        return
-    if x_pin_profe:
-        fallos += 1
-        FALLOS_PIN[codigo] = (0, time.time() + 60) if fallos >= 5 else (fallos, 0)
-        raise HTTPException(401, "PIN incorrecto.")
-    raise HTTPException(401, "Esta clase tiene PIN: escríbelo para entrar.")
+    if not x_pin_profe:
+        raise HTTPException(401, "Esta clase tiene PIN: escríbelo para entrar.")
+    comprobar_secreto(f"clase:{codigo}", x_pin_profe, fila, "PIN incorrecto.")
 
 
 SOLO_PROFE = [Depends(comprobar_pin)]
+
+
+# ---------- Cuentas de alumno ----------
+# Usuario único y contraseña: en un mismo móvil pueden entrar varios hermanos o compañeros.
+# Sin email: si un niño olvida la contraseña, su profe le pone otra. El id del alumno (UUID) solo se entrega
+# al entrar con la contraseña, y es lo que el móvil usa después para sincronizar.
+
+def normalizar_usuario(usuario: str) -> str:
+    return re.sub(r"\s+", "", usuario).lower()
+
+
+def comprobar_contrasena(contrasena: str):
+    if not 4 <= len(contrasena) <= 64:
+        raise HTTPException(400, "La contraseña tiene que tener al menos 4 letras o números.")
+
+
+def guardar_contrasena(c, alumno_id: str, contrasena: str, usuario: str | None = None):
+    sal = secrets.token_hex(16)
+    if usuario:
+        c.execute("INSERT INTO cuentas_alumno (alumno, usuario, sal, hash) VALUES (?, ?, ?, ?)",
+                  (alumno_id, usuario, sal, hash_pin(contrasena, sal)))
+    else:
+        c.execute("UPDATE cuentas_alumno SET sal = ?, hash = ? WHERE alumno = ?", (sal, hash_pin(contrasena, sal), alumno_id))
+
+
+def usuario_libre(c, base: str) -> str:
+    base = base[:17]
+    n = 2
+    while c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (f"{base}{n}",)).fetchone():
+        n += 1
+    return f"{base}{n}"
 
 
 # ---------- Materias ----------
@@ -340,7 +382,8 @@ def ver_clase(codigo: str):
     with closing(db()) as c:
         clase = buscar_clase(c, codigo)
         alumnos = c.execute("""
-            SELECT a.id, a.nombre, m.fecha FROM matriculas m JOIN alumnos a ON a.id = m.alumno
+            SELECT a.id, a.nombre, cu.usuario, m.fecha FROM matriculas m JOIN alumnos a ON a.id = m.alumno
+            LEFT JOIN cuentas_alumno cu ON cu.alumno = a.id
             WHERE m.clase = ? ORDER BY a.nombre COLLATE NOCASE
         """, (clase["codigo"],)).fetchall()
         lecciones = c.execute("""
@@ -356,24 +399,80 @@ def ver_clase(codigo: str):
     }
 
 
+class NuevoAlumno(BaseModel):
+    nombre: str
+    usuario: str
+    contrasena: str
+    clase: str  # sin el código de una clase no se puede crear un usuario
+
+
+@app.post("/api/alumnos")
+def crear_alumno(datos: NuevoAlumno):
+    nombre = " ".join(datos.nombre.split())[:40]
+    usuario = normalizar_usuario(datos.usuario)
+    if not nombre:
+        raise HTTPException(400, "Escribe tu nombre.")
+    if not re.fullmatch(r"[a-z0-9]{3,20}", usuario):
+        raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
+    comprobar_contrasena(datos.contrasena)
+    with closing(db()) as c, c:
+        clase = buscar_clase(c, datos.clase)
+        if c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (usuario,)).fetchone():
+            libre = usuario_libre(c, usuario)
+            raise HTTPException(409, {"mensaje": f"El usuario «{usuario}» ya existe. Prueba con «{libre}».", "sugerencia": libre})
+        alumno_id = str(uuid.uuid4())
+        c.execute("INSERT INTO alumnos (id, nombre) VALUES (?, ?)", (alumno_id, nombre))
+        guardar_contrasena(c, alumno_id, datos.contrasena, usuario)
+        c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
+    return {"id": alumno_id, "usuario": usuario, "nombre": nombre}
+
+
+class Entrar(BaseModel):
+    usuario: str
+    contrasena: str
+
+
+@app.post("/api/alumnos/entrar")
+def entrar_alumno(datos: Entrar):
+    usuario = normalizar_usuario(datos.usuario)
+    with closing(db()) as c:
+        fila = c.execute("""
+            SELECT a.id, a.nombre, cu.usuario, cu.sal, cu.hash FROM cuentas_alumno cu JOIN alumnos a ON a.id = cu.alumno
+            WHERE cu.usuario = ?
+        """, (usuario,)).fetchone()
+    comprobar_secreto(f"alumno:{usuario}", datos.contrasena, fila, "Usuario o contraseña incorrectos.")
+    return {"id": fila["id"], "usuario": fila["usuario"], "nombre": fila["nombre"]}
+
+
+class NuevaContrasena(BaseModel):
+    contrasena: str
+
+
+@app.put("/api/clases/{codigo}/alumnos/{alumno_id}/contrasena", dependencies=SOLO_PROFE)
+def cambiar_contrasena(codigo: str, alumno_id: str, datos: NuevaContrasena):
+    """El profe le pone una contraseña nueva a un alumno de su clase que ha olvidado la suya."""
+    comprobar_contrasena(datos.contrasena)
+    with closing(db()) as c, c:
+        clase = buscar_clase(c, codigo)
+        if not c.execute("""
+            SELECT 1 FROM matriculas m JOIN cuentas_alumno cu ON cu.alumno = m.alumno WHERE m.clase = ? AND m.alumno = ?
+        """, (clase["codigo"], alumno_id)).fetchone():
+            raise HTTPException(404, "Ese alumno no está en esta clase o no tiene usuario.")
+        guardar_contrasena(c, alumno_id, datos.contrasena)
+    return {"ok": True}
+
+
 class Unirse(BaseModel):
     alumno_id: str
-    nombre: str
 
 
 @app.post("/api/clases/{codigo}/unirse")
 def unirse(codigo: str, datos: Unirse):
-    nombre = datos.nombre.strip()[:40]
-    if not nombre:
-        raise HTTPException(400, "Escribe tu nombre.")
-    if not re.fullmatch(r"[0-9a-f-]{36}", datos.alumno_id):
-        raise HTTPException(400, "Identificador de alumno no válido.")
+    """Un alumno que ya tiene usuario entra en otra clase."""
     with closing(db()) as c, c:
         clase = buscar_clase(c, codigo)
-        c.execute(
-            "INSERT INTO alumnos (id, nombre) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre",
-            (datos.alumno_id, nombre),
-        )
+        if not c.execute("SELECT 1 FROM cuentas_alumno WHERE alumno = ?", (datos.alumno_id,)).fetchone():
+            raise HTTPException(404, "Primero crea tu usuario.")
         c.execute(
             "INSERT OR IGNORE INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)",
             (clase["codigo"], datos.alumno_id, ahora()),

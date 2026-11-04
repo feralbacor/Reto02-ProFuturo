@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  COLOR, pagina, boton, botonVolver, campo, tarjeta, etiqueta, titulo, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso,
+  COLOR, pagina, boton, botonVolver, campo, tarjeta, etiqueta, titulo, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
 
 // Agrupa una lista de lecciones por materia, en el orden en que aparece cada materia.
@@ -159,6 +159,18 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
     cargar()
   }
 
+  // Si un alumno olvida su contraseña, el profe le pone otra y se la dice (sin email: no todos tienen).
+  const nuevaContrasena = async (a) => {
+    const nueva = window.prompt(`Nueva contraseña para ${a.nombre} (al menos 4 letras o números):`)
+    if (nueva === null) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${a.id}/contrasena`, { method: 'PUT', body: { contrasena: nueva } })
+      window.alert(`Listo. Dile a ${a.nombre} su usuario («${a.usuario}») y su nueva contraseña. La primera vez tendrá que entrar con conexión.`)
+    } catch (e) {
+      window.alert(e.message)
+    }
+  }
+
   const abrirLeccion = async (id) => {
     setAbriendo(true)
     try {
@@ -235,8 +247,13 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
       {clase.alumnos.length === 0
         ? <p style={{ color: COLOR.suave }}>Todavía no ha entrado nadie. Diles el código de arriba.</p>
         : (
-          <ul style={{ ...tarjeta, listStyle: 'none', fontSize: '20px', lineHeight: '1.9' }}>
-            {clase.alumnos.map(a => <li key={a.id}>{a.nombre}</li>)}
+          <ul style={{ ...tarjeta, listStyle: 'none', fontSize: '20px', padding: '6px 18px' }}>
+            {clase.alumnos.map(a => (
+              <li key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '10px 0', borderBottom: `1px solid ${COLOR.borde}` }}>
+                <span>{a.nombre}{a.usuario && <span style={{ display: 'block', fontSize: '17px', color: COLOR.suave }}>Usuario: {a.usuario}</span>}</span>
+                {a.usuario && <button onClick={() => nuevaContrasena(a)} style={boton(COLOR.gris, { fontSize: '16px', minHeight: '44px', padding: '8px 14px' })}>Nueva contraseña</button>}
+              </li>
+            ))}
           </ul>
         )}
     </div>
@@ -493,7 +510,7 @@ function IconoDescargado({ tam = 22 }) {
 function AvisoDescargado({ lecciones, appGuardada, actualizado }) {
   const n = lecciones === 1 ? '1 lección guardada' : `${lecciones} lecciones guardadas`
   const [fondo, borde, color, cabecera, texto] =
-    appGuardada === true ? ['#f0fdf4', COLOR.verde, COLOR.verde, 'Descargado en este aparato', `${n}: ${lecciones === 1 ? 'la' : 'las'} puedes hacer sin conexión.`]
+    appGuardada === true ? ['#f0fdf4', COLOR.verde, COLOR.verde, 'Descargado en este aparato', `${n}: ${lecciones === 1 ? 'la' : 'las'} puedes hacer sin conexión. Las nuevas se descargan solas cuando hay conexión.`]
       : appGuardada === false ? ['#fefce8', '#ca8a04', '#854d0e', 'Guardando la app en este aparato…', `${n}. Espera un momento antes de quedarte sin conexión.`]
         : ['#fef2f2', COLOR.rojo, COLOR.rojo, 'Sin conexión no se abrirá la app', `${n}, pero este navegador no puede guardar la app. Entra con el enlace https.`]
   return (
@@ -510,27 +527,228 @@ function AvisoDescargado({ lecciones, appGuardada, actualizado }) {
 const respuestaBienFormada = (r) => r && typeof r.id === 'string' && typeof r.alumno === 'string'
   && typeof r.leccion_id === 'string' && Number.isInteger(r.pregunta) && Number.isInteger(r.respuesta) && typeof r.fecha === 'string'
 
+// Varios niños pueden compartir un móvil: cada uno entra con su usuario y su contraseña, también sin conexión.
+// En el aparato: «perfiles» (los que han entrado aquí, con un hash de su contraseña) y, por alumno,
+// «clases:ID», «version:ID» y «actualizado:ID». Las respuestas pendientes son del aparato (cada una lleva su alumno).
+const COLORES_AVATAR = ['#2563eb', '#16a34a', '#c2410c', '#7c3aed', '#db2777', '#0e7490']
+
+function Avatar({ nombre, tam = 52 }) {
+  const color = COLORES_AVATAR[[...nombre].reduce((n, c) => n + c.charCodeAt(0), 0) % COLORES_AVATAR.length]
+  return (
+    <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: '50%', backgroundColor: color, color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: tam * 0.45, fontWeight: 'bold', flexShrink: 0 }}>
+      {nombre.trim()[0]?.toUpperCase()}
+    </span>
+  )
+}
+
+// Guarda (o actualiza) al alumno en este aparato con un hash de su contraseña, para que pueda entrar sin conexión.
+async function recordarEnAparato(alumno, contrasena) {
+  const sal = nuevoId()
+  const hash = await hashLocal(contrasena, sal).catch(() => null) // sin https no hay WebCrypto: entonces solo entrará con conexión
+  guardar('perfiles', [...leer('perfiles', []).filter(p => p.id !== alumno.id), { id: alumno.id, usuario: alumno.usuario, nombre: alumno.nombre, sal, hash }])
+}
+
+const sugerirUsuario = (nombre) => nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
+const usuarioValido = (u) => /^[a-z0-9]{3,20}$/.test(u)
+const pista = { fontSize: '17px', color: COLOR.suave, margin: '8px 0 20px' }
+
+function CampoContrasena({ id, valor, onCambio, nueva = false }) {
+  const [ver, setVer] = useState(false)
+  return (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      {/* autoComplete: en un móvil compartido el navegador no debe rellenar la contraseña de otro niño */}
+      <input id={id} type={ver ? 'text' : 'password'} value={valor} onChange={e => onCambio(e.target.value)} maxLength={64}
+        autoComplete={nueva ? 'new-password' : 'off'} autoCapitalize="off" autoCorrect="off" spellCheck={false}
+        style={{ ...campo, fontSize: '24px', flex: 1, minWidth: 0 }} />
+      <button type="button" onClick={() => setVer(!ver)} aria-pressed={ver} style={boton(COLOR.gris, { fontSize: '17px', padding: '10px 14px' })}>
+        {ver ? 'Ocultar' : 'Ver'}
+      </button>
+    </div>
+  )
+}
+
+const campoCodigo = { ...campo, fontSize: '28px', letterSpacing: '4px', fontFamily: 'ui-monospace, Menlo, monospace' }
+const limpiarCodigo = (codigo) => codigo.toUpperCase().replace(/[^A-Z0-9]/g, '')
+
 function VistaAlumno({ onVolver }) {
-  const [perfil, setPerfil] = useState(() => leer('alumno-perfil', null)) // { id, nombre }
-  const [clases, setClases] = useState(() => leer('alumno-clases', []))
+  // Quién usa el aparato ahora: solo en memoria, así al volver a abrir la app se pregunta otra vez.
+  const [alumno, setAlumno] = useState(null)
+  if (!alumno) return <AlumnoQuienEres onEntrar={setAlumno} onVolver={onVolver} />
+  return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={() => setAlumno(null)} />
+}
+
+function AlumnoQuienEres({ onEntrar, onVolver }) {
+  const [vista, setVista] = useState(null) // null | 'nuevo' | 'usuario' | un perfil
+  const perfiles = leer('perfiles', [])
+  if (vista === 'nuevo') return <AlumnoNuevo onEntrar={onEntrar} onVolver={() => setVista(null)} />
+  if (vista) return <AlumnoContrasena perfil={vista === 'usuario' ? null : vista} onEntrar={onEntrar} onVolver={() => setVista(null)} />
+  return (
+    <div style={pagina}>
+      <button onClick={onVolver} style={botonVolver}>Volver</button>
+      <h1 style={titulo}>¿Quién eres?</h1>
+      {perfiles.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
+          {perfiles.map(p => (
+            <button key={p.id} onClick={() => setVista(p)}
+              style={{ ...tarjeta, display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'left', cursor: 'pointer', fontSize: '22px', fontWeight: 'bold' }}>
+              <Avatar nombre={p.nombre} />
+              <span>{p.nombre}<span style={{ display: 'block', fontSize: '17px', fontWeight: 'normal', color: COLOR.suave }}>{p.usuario}</span></span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <button onClick={() => setVista('nuevo')} style={boton(COLOR.verde)}>Crear mi usuario</button>
+        <button onClick={() => setVista('usuario')} style={boton(COLOR.gris)}>Ya tengo usuario</button>
+      </div>
+      <p style={{ ...pista, marginTop: '20px' }}>En este móvil o tablet pueden entrar varios alumnos, cada uno con su usuario y su contraseña.</p>
+    </div>
+  )
+}
+
+function AlumnoContrasena({ perfil, onEntrar, onVolver }) {
+  const [usuario, setUsuario] = useState(perfil?.usuario || '')
+  const [contrasena, setContrasena] = useState('')
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  const entrar = async (ev) => {
+    ev.preventDefault()
+    setError('')
+    setEnviando(true)
+    // Sin conexión: se compara con el hash guardado en este aparato.
+    if (perfil?.hash && await hashLocal(contrasena, perfil.sal).catch(() => null) === perfil.hash) return onEntrar(perfil)
+    // Con conexión: la primera vez en este aparato, o si el profe le ha puesto otra contraseña.
+    try {
+      const a = await api('/api/alumnos/entrar', { method: 'POST', body: { usuario, contrasena } })
+      await recordarEnAparato(a, contrasena)
+      onEntrar(a)
+    } catch (e) {
+      setError(e.message !== SIN_CONEXION ? e.message
+        : perfil?.hash ? 'Contraseña incorrecta.' : 'La primera vez en este aparato hace falta conexión con el ordenador de la clase.')
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div style={pagina}>
+      <button onClick={onVolver} style={botonVolver}>Volver</button>
+      {perfil
+        ? <h1 style={{ ...titulo, display: 'flex', alignItems: 'center', gap: '14px' }}><Avatar nombre={perfil.nombre} />Hola, {perfil.nombre}</h1>
+        : <h1 style={titulo}>Entrar con mi usuario</h1>}
+      <form onSubmit={entrar} style={tarjeta}>
+        {!perfil && <>
+          <label htmlFor="entrar-usuario" style={etiqueta}>Tu usuario</label>
+          <input id="entrar-usuario" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
+            autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ ...campo, fontSize: '24px', marginBottom: '20px' }} />
+        </>}
+        <label htmlFor="entrar-contrasena" style={etiqueta}>Tu contraseña</label>
+        <CampoContrasena id="entrar-contrasena" valor={contrasena} onCambio={setContrasena} />
+        <p style={pista}>¿Se te ha olvidado? Pídele a tu profe una contraseña nueva.</p>
+        <Aviso texto={error} />
+        <button type="submit" disabled={enviando || !usuarioValido(usuario) || contrasena.length < 4} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+          {enviando ? 'Entrando…' : 'Entrar'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function AlumnoNuevo({ onEntrar, onVolver }) {
+  const [nombre, setNombre] = useState('')
+  const [usuario, setUsuario] = useState(null) // null: se saca del nombre hasta que lo cambie él
+  const [contrasena, setContrasena] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const elUsuario = usuario ?? sugerirUsuario(nombre)
+  const codigoLimpio = limpiarCodigo(codigo)
+
+  const crear = async (ev) => {
+    ev.preventDefault()
+    setError('')
+    setEnviando(true)
+    try {
+      const a = await api('/api/alumnos', { method: 'POST', body: { nombre, usuario: elUsuario, contrasena, clase: codigoLimpio } })
+      await recordarEnAparato(a, contrasena)
+      onEntrar(a)
+    } catch (e) {
+      if (e.detalle?.sugerencia) setUsuario(e.detalle.sugerencia)
+      setError(e.message === SIN_CONEXION ? 'Para crear tu usuario hace falta conexión con el ordenador de la clase.' : e.message)
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div style={pagina}>
+      <button onClick={onVolver} style={botonVolver}>Volver</button>
+      <h1 style={titulo}>Crear mi usuario</h1>
+      <form onSubmit={crear} style={tarjeta}>
+        <label htmlFor="nuevo-nombre" style={etiqueta}>¿Cómo te llamas?</label>
+        <input id="nuevo-nombre" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off"
+          placeholder="Tu nombre" style={{ ...campo, marginBottom: '20px' }} />
+        <label htmlFor="nuevo-usuario" style={etiqueta}>Tu usuario</label>
+        <input id="nuevo-usuario" value={elUsuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
+          autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ ...campo, fontSize: '24px' }} />
+        <p style={pista}>Solo letras y números, sin espacios. Apúntalo: lo necesitas para entrar.</p>
+        <label htmlFor="nuevo-contrasena" style={etiqueta}>Tu contraseña</label>
+        <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
+        <p style={pista}>Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.</p>
+        <label htmlFor="nuevo-codigo" style={etiqueta}>Código de la clase</label>
+        <input id="nuevo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
+          autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
+          style={{ ...campoCodigo, marginBottom: '20px' }} />
+        <Aviso texto={error} />
+        <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || codigoLimpio.length !== 6}
+          style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+          {enviando ? 'Creando…' : 'Crear y entrar'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function AlumnoCasa({ alumno, onSalir }) {
+  const clave = (que) => `${que}:${alumno.id}`
+  const [clases, setClases] = useState(() => leer(clave('clases'), []))
   const [pendientes, setPendientes] = useState(() => leer('pendientes', []).length)
   const [estado, setEstado] = useState('ok') // ok | enviando | sin-conexion | error
-  const [entrando, setEntrando] = useState(false)
+  const [otraClase, setOtraClase] = useState(false)
   const [leccion, setLeccion] = useState(null)
-  const [actualizado, setActualizado] = useState(() => leer('alumno-actualizado', null))
+  const [actualizado, setActualizado] = useState(() => leer(clave('actualizado'), null))
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
-  // Envía las respuestas guardadas sin conexión y se trae las lecciones nuevas (solo si algo ha cambiado).
+  // Recoge lo que el service worker envió o descargó con la app cerrada (segundo-plano.js), para todos los alumnos del aparato.
+  const recoger = useCallback(async () => {
+    const sw = await tomarDelSegundoPlano()
+    if (!sw) return
+    const recibidas = new Set(sw.recibidas)
+    const quedan = leer('pendientes', []).filter(p => !recibidas.has(p.id))
+    guardar('pendientes', quedan)
+    setPendientes(quedan.length)
+    for (const [id, d] of Object.entries(sw.alumnos || {})) {
+      if (d.clases) {
+        guardar(`clases:${id}`, d.clases)
+        guardar(`version:${id}`, d.version)
+      }
+      if (sw.fecha > (leer(`actualizado:${id}`, null) || '')) guardar(`actualizado:${id}`, sw.fecha)
+    }
+    setClases(leer(`clases:${alumno.id}`, []))
+    setActualizado(leer(`actualizado:${alumno.id}`, null))
+  }, [alumno.id])
+
+  // Envía las respuestas guardadas sin conexión (las de todos los alumnos del aparato) y se trae las lecciones nuevas.
   const sincronizar = useCallback(async () => {
-    if (!perfil || enCurso.current) return
+    if (enCurso.current) return
     enCurso.current = true
     setEstado('enviando')
+    await recoger()
     const enviadas = leer('pendientes', []).filter(respuestaBienFormada)
     try {
       const r = await api('/api/sync', {
         method: 'POST',
-        body: { alumno_id: perfil.id, respuestas: enviadas, version: leer('alumno-clases', null) ? leer('alumno-version', null) : null },
+        body: { alumno_id: alumno.id, respuestas: enviadas, version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null },
       })
       const recibidas = new Set(r.recibidas)
       // Las respuestas que se dieron mientras se enviaba se quedan para la próxima vez.
@@ -539,11 +757,11 @@ function VistaAlumno({ onVolver }) {
       setPendientes(quedan.length)
       if (r.clases) {
         setClases(r.clases)
-        guardar('alumno-clases', r.clases) // así las lecciones se pueden usar sin conexión
+        guardar(`clases:${alumno.id}`, r.clases) // así las lecciones se pueden usar sin conexión
       }
-      guardar('alumno-version', r.version)
+      guardar(`version:${alumno.id}`, r.version)
       const ahora = new Date().toISOString()
-      guardar('alumno-actualizado', ahora)
+      guardar(`actualizado:${alumno.id}`, ahora)
       setActualizado(ahora)
       setEstado('ok')
     } catch (e) {
@@ -551,38 +769,29 @@ function VistaAlumno({ onVolver }) {
     } finally {
       enCurso.current = false
     }
-  }, [perfil])
+  }, [alumno.id, recoger])
 
   useEffect(() => {
     sincronizar()
     const cada30s = setInterval(sincronizar, 30000)
     const desconectado = () => setEstado('sin-conexion')
+    const alVolver = () => { if (document.visibilityState === 'visible') sincronizar() }
+    const delServiceWorker = (e) => { if (e.data === 'mochila-sincronizada') recoger() }
     window.addEventListener('online', sincronizar)
     window.addEventListener('offline', desconectado)
+    document.addEventListener('visibilitychange', alVolver)
+    navigator.serviceWorker?.addEventListener('message', delServiceWorker)
     return () => {
       clearInterval(cada30s)
       window.removeEventListener('online', sincronizar)
       window.removeEventListener('offline', desconectado)
+      document.removeEventListener('visibilitychange', alVolver)
+      navigator.serviceWorker?.removeEventListener('message', delServiceWorker)
     }
-  }, [sincronizar])
+  }, [sincronizar, recoger])
 
-  const alEntrar = (p) => {
-    guardar('alumno-perfil', p)
-    setPerfil(p)
-    setEntrando(false)
-  }
-
-  const cambiarDeAlumno = () => {
-    if (!window.confirm(`¿Seguro que no eres ${perfil.nombre}?`)) return
-    // Las respuestas pendientes se quedan: se enviarán igual, cada una lleva su alumno.
-    try { ['alumno-perfil', 'alumno-clases', 'alumno-version', 'alumno-actualizado'].forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
-    setPerfil(null)
-    setClases([])
-    setActualizado(null)
-  }
-
-  if (!perfil || entrando) {
-    return <AlumnoEntrar perfil={perfil} onEntrado={alEntrar} onVolver={perfil ? () => setEntrando(false) : onVolver} />
+  if (otraClase) {
+    return <AlumnoOtraClase alumno={alumno} onVolver={() => setOtraClase(false)} onDentro={() => { setOtraClase(false); sincronizar() }} />
   }
 
   const barra = <BarraEnvio estado={estado} pendientes={pendientes} />
@@ -591,7 +800,7 @@ function VistaAlumno({ onVolver }) {
     return (
       <>
         {barra}
-        <AlumnoLeccion leccion={leccion} alumnoId={perfil.id} onVolver={() => setLeccion(null)}
+        <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => setLeccion(null)}
           onRespuesta={() => setPendientes(leer('pendientes', []).length)} onTerminar={sincronizar} />
       </>
     )
@@ -601,11 +810,9 @@ function VistaAlumno({ onVolver }) {
     <>
       {barra}
       <div style={pagina}>
-        <button onClick={onVolver} style={botonVolver}>Volver</button>
-        <h1 style={{ ...titulo, marginBottom: '6px' }}>Hola, {perfil.nombre}</h1>
-        <button onClick={cambiarDeAlumno} style={{ background: 'none', border: 'none', color: COLOR.azul, fontSize: '17px', textDecoration: 'underline', cursor: 'pointer', minHeight: '44px', marginBottom: '16px' }}>
-          No soy {perfil.nombre}
-        </button>
+        <button onClick={onSalir} style={botonVolver}>Salir</button>
+        <h1 style={{ ...titulo, display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}><Avatar nombre={alumno.nombre} />Hola, {alumno.nombre}</h1>
+        <p style={{ ...pista, marginTop: 0 }}>Cuando termines, pulsa «Salir» para que pueda entrar otro alumno.</p>
 
         {total > 0 && <AvisoDescargado lecciones={total} appGuardada={appGuardada} actualizado={actualizado} />}
 
@@ -642,28 +849,26 @@ function VistaAlumno({ onVolver }) {
           <button onClick={sincronizar} disabled={estado === 'enviando'} style={boton(COLOR.azul, { flex: '1 1 200px' })}>
             {estado === 'enviando' ? 'Buscando…' : 'Buscar lecciones nuevas'}
           </button>
-          <button onClick={() => setEntrando(true)} style={boton(COLOR.gris, { flex: '1 1 200px' })}>Entrar en otra clase</button>
+          <button onClick={() => setOtraClase(true)} style={boton(COLOR.gris, { flex: '1 1 200px' })}>Entrar en otra clase</button>
         </div>
       </div>
     </>
   )
 }
 
-function AlumnoEntrar({ perfil, onEntrado, onVolver }) {
-  const [nombre, setNombre] = useState('')
+function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
   const [codigo, setCodigo] = useState('')
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const codigoLimpio = codigo.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const codigoLimpio = limpiarCodigo(codigo)
 
   const entrar = async (ev) => {
     ev.preventDefault()
     setError('')
     setEnviando(true)
-    const p = perfil || { id: nuevoId(), nombre: nombre.trim() }
     try {
-      await api(`/api/clases/${codigoLimpio}/unirse`, { method: 'POST', body: { alumno_id: p.id, nombre: p.nombre } })
-      onEntrado(p)
+      await api(`/api/clases/${codigoLimpio}/unirse`, { method: 'POST', body: { alumno_id: alumno.id } })
+      onDentro()
     } catch (e) {
       setError(e.message === SIN_CONEXION ? 'Para entrar en una clase nueva hace falta conexión con el ordenador de la clase.' : e.message)
       setEnviando(false)
@@ -673,21 +878,14 @@ function AlumnoEntrar({ perfil, onEntrado, onVolver }) {
   return (
     <div style={pagina}>
       <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>{perfil ? 'Entrar en otra clase' : 'Entrar en tu clase'}</h1>
+      <h1 style={titulo}>Entrar en otra clase</h1>
       <form onSubmit={entrar} style={tarjeta}>
-        {!perfil && (
-          <>
-            <label htmlFor="nombre-alumno" style={etiqueta}>¿Cómo te llamas?</label>
-            <input id="nombre-alumno" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="given-name"
-              placeholder="Tu nombre" style={{ ...campo, marginBottom: '20px' }} />
-          </>
-        )}
         <label htmlFor="codigo-clase" style={etiqueta}>Código de la clase</label>
         <input id="codigo-clase" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
           autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
-          style={{ ...campo, fontSize: '28px', letterSpacing: '4px', fontFamily: 'ui-monospace, Menlo, monospace', marginBottom: '20px' }} />
+          style={{ ...campoCodigo, marginBottom: '20px' }} />
         <Aviso texto={error} />
-        <button type="submit" disabled={enviando || codigoLimpio.length !== 6 || (!perfil && !nombre.trim())} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+        <button type="submit" disabled={enviando || codigoLimpio.length !== 6} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>
       </form>

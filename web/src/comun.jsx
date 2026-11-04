@@ -33,9 +33,10 @@ export async function api(ruta, { method = 'GET', body } = {}) {
   try { datos = await res.json() } catch { /* respuesta sin JSON */ }
   if (!res.ok) {
     const detalle = datos?.detail
-    const error = new Error(typeof detalle === 'string' ? detalle
-      : res.status >= 500 ? 'El ordenador de la clase no responde. Prueba otra vez.' : 'Algo no ha ido bien. Prueba otra vez.')
+    const error = new Error(typeof detalle === 'string' ? detalle : detalle?.mensaje
+      || (res.status >= 500 ? 'El ordenador de la clase no responde. Prueba otra vez.' : 'Algo no ha ido bien. Prueba otra vez.'))
     error.estado = res.status
+    error.detalle = detalle // p. ej. {mensaje, sugerencia} si el usuario ya existe
     throw error
   }
   return datos
@@ -46,6 +47,50 @@ export function leer(clave, porDefecto) {
 }
 export function guardar(clave, valor) {
   try { localStorage.setItem(clave, JSON.stringify(valor)) } catch { /* sin espacio o bloqueado */ }
+  if (clave === 'pendientes' || clave === 'perfiles' || /^(clases|version):/.test(clave)) espejar()
+}
+
+// Para entrar sin conexión: hash de la contraseña guardado en el aparato (WebCrypto, solo con https o localhost).
+export async function hashLocal(contrasena, sal) {
+  const texto = new TextEncoder()
+  const clave = await crypto.subtle.importKey('raw', texto.encode(contrasena), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: texto.encode(sal), iterations: 100000 }, clave, 256)
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// ---------- Segundo plano ----------
+// El service worker (public/segundo-plano.js) sincroniza con la app cerrada, pero no puede leer localStorage:
+// le dejamos una copia en la caché «mochila-espejo» y él deja ahí lo que ha enviado y descargado.
+const ESPEJO = 'mochila-espejo'
+
+// Varios alumnos pueden usar el mismo aparato: «perfiles» son los que han entrado aquí alguna vez,
+// y cada uno tiene sus clases en «clases:ID» y «version:ID». Las respuestas pendientes son del aparato.
+export async function espejar() {
+  try {
+    const perfiles = leer('perfiles', [])
+    const pendientes = leer('pendientes', [])
+    await (await caches.open(ESPEJO)).put('/espejo/pagina.json', new Response(JSON.stringify({
+      perfiles: perfiles.map(p => ({ id: p.id, version: leer(`clases:${p.id}`, null) ? leer(`version:${p.id}`, null) : null })),
+      pendientes,
+    })))
+    if (!perfiles.length || !navigator.serviceWorker?.controller) return
+    const sw = await navigator.serviceWorker.ready
+    // Enviar al volver la red aunque la app esté cerrada (Chrome y Android; Safari no lo tiene).
+    if (pendientes.length) await sw.sync?.register('mochila')
+    // Buscar lecciones nuevas de vez en cuando con la app cerrada (solo si está instalada; el navegador decide cuándo).
+    await sw.periodicSync?.register('mochila', { minInterval: 60 * 60 * 1000 })
+  } catch { /* sin caché, sin permiso o sin service worker: la página sincroniza mientras está abierta */ }
+}
+
+// Lo que el service worker envió o descargó con la app cerrada (y lo quita, para recogerlo una sola vez).
+export async function tomarDelSegundoPlano() {
+  try {
+    const cache = await caches.open(ESPEJO)
+    const r = await cache.match('/espejo/sw.json')
+    if (!r) return null
+    await cache.delete('/espejo/sw.json')
+    return await r.json()
+  } catch { return null }
 }
 export function guardarPin(codigo, pin) {
   guardar('pines-profe', { ...leer('pines-profe', {}), [codigo.toUpperCase()]: pin })
