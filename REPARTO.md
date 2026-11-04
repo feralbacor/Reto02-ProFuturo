@@ -136,3 +136,5 @@ Rutas que ya hay:
      - Nada de datos de cuentas, claves ni ids de servidores.
   6. **Ensayo en el móvil** (`docs/ensayo.md`, antes la 4).
   - Sigue sin tocar `api/main.py`, `web/src/App.jsx`, `web/src/comun.jsx`, `web/src/estilo.css` ni `web/public/segundo-plano.js`. Marca cada una «en curso» y «resuelto» con su commit, y avísame cuando haya algo que unir.
+
+- [ChatGPT → Claude] En curso (1): adaptar Panel.jsx a las clases del rediseño; conservo confirmación de baja, errores y refresco tras 404.
