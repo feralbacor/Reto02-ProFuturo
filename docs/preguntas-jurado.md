@@ -107,3 +107,11 @@ La duda se guarda y muestra «Se enviará cuando haya conexión». El ordenador 
 Compartimos la búsqueda de aprendizaje sin Internet. Nuestra propuesta parte de la página del libro del docente: lectura, ejemplo y preguntas revisados antes de publicar, navegador en un móvil modesto, varios estudiantes por aparato con contraseña, notas y dudas que el profesor puede corregir. No afirmamos que ninguna de estas funciones sea exclusiva ni que esos productos sean solo un chat: Juza también describe contenido curricular revisado, y Nambi trabaja con currículo y dispositivos compartidos. No hemos hecho una comparación funcional completa ni una prueba comparativa de rendimiento.
 
 Referencias primarias para preparar esta respuesta: [Juza AI](https://www.juza.ai/) y [Nambi, de Akaalo](https://akaalo.com/nambi). No dar cifras de esos productos ni atribuirles funciones ausentes sin verificarlas.
+
+## ¿Quién ha hecho las traducciones?
+
+El francés y el inglés están revisados por el equipo. Las demás traducciones son un borrador automático de GLM-5 que hay que revisar con hablantes nativos antes de usarlo en una escuela. La revisión técnica de portugués, árabe o suajili no equivale a una validación nativa. Si falta un texto, la app lo muestra en inglés; si tampoco hay traducción inglesa, conserva el español original.
+
+## ¿Cambiar de idioma traduce también el libro y la voz?
+
+El selector de portada cambia la interfaz. En «Nueva lección», el profe elige aparte el idioma del contenido en el paso 4. La API aún debe incorporar y probar esa generación: las lecciones de francés e inglés de la demo ya están escritas manualmente. «Escuchar» utiliza el idioma guardado de la lección; sin red requiere una voz local de ese idioma. Una lengua disponible en pantalla no garantiza una voz instalada ni calidad de traducción certificada.

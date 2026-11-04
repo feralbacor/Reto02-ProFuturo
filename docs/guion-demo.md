@@ -5,7 +5,7 @@ Textos contrastados con App.jsx del rediseño y «Tengo una duda», integrados e
 ## Preparación
 
 1. Ejecutar la carga de AULA23 y comprobar las credenciales desde la pantalla del profe. PIN inicial 1234; estudiante aula23ana, contraseña inicial 1234. La carga conserva cambios previos de credenciales. [Accesos de demo](demo.md).
-2. Tener una lección publicada y descargada en el móvil. No depender de que la IA cree una lección durante los tres minutos. AULA23 incluye dos lecciones y tres dudas ficticias: una respuesta preparada como ejemplo de IA, otra revisada por el profe y una pendiente. El hilo local puede contestar la pendiente después; no se reinicia al repetir la carga.
+2. Tener una lección publicada y descargada en el móvil. No depender de que la IA cree una lección durante los tres minutos. AULA23 incluye cuatro lecciones y tres dudas ficticias: una respuesta preparada como ejemplo de IA, otra revisada por el profe y una pendiente. El hilo local puede contestar la pendiente después; no se reinicia al repetir la carga.
 3. Preparar dos cuentas en el mismo móvil, entrar con ambas conectado al aula y descargar sus lecciones. Elegir una voz local si se quiere demostrar audio offline.
 4. Servidores y Ollama preparados por una persona. Modelo qwen3-vl:4b-instruct descargado previamente; comprobar que se ejecuta en el ordenador del aula y no en un túnel a una GPU remota.
 5. Usar versión compilada y origen HTTPS de confianza en el móvil. Esperar el aviso de que la aplicación y las lecciones están guardadas. No cambiar de dirección, borrar datos del navegador ni reinstalar entre pasos.
@@ -37,7 +37,7 @@ Para encajar en tres minutos, ensayar los movimientos en paralelo a la narració
 | 2 | Estudiante | «Soy estudiante» → «¿Quién eres?» → «Crear mi usuario». Nombre, usuario único de 3–20 minúsculas o números, contraseña de 4–64 caracteres, código de clase → «Crear y entrar». | «Varios niños pueden compartir un móvil sin compartir cuenta. No pedimos email ni apellidos.» |
 | 3 | Profe | «Nueva lección» → paso 1, «Las fotos de la página». «Hacer una foto» o «Elegir fotos»; máximo cinco. | Para el ensayo corto, usar una sola imagen preparada. |
 | 4 | Profe | «Leer la foto» con una sola imagen → paso 2, «El texto». | Revisar y corregir la transcripción antes de continuar. Con varias imágenes cambia el rótulo de lectura. |
-| 5 | Profe | Paso 3, «La materia»: escribir o elegir una sugerencia. Pulsar «Preparar la lección». | «La generación tardó unos 45 s en el equipo de prueba.» Ese tiempo no incluye lectura ni revisión. |
+| 5 | Profe | Paso 3, «La materia»: escribir o elegir una sugerencia. Paso 4, «El idioma de la lección»: elegir el idioma y pulsar «Preparar la lección». | «La generación tardó unos 45 s en el equipo de prueba.» Ese tiempo no incluye lectura ni revisión. |
 | 6 | Profe | «Revisa la lección». Revisar lectura, ejemplo y preguntas; pulsar «Publicar». | Comprobar cuál es la opción correcta antes de publicar. |
 | 7 | Estudiante | Reabrir la app conectado al aula o esperar la sincronización. | Comprobar que la nueva lección aparece en su materia y está descargada antes de desconectar. |
 
@@ -69,3 +69,13 @@ El service worker conserva las respuestas y dudas pendientes mediante el espejo 
 El botón «Quitar de la clase» elimina matrícula, respuestas y dudas de esa clase; conserva la cuenta y las demás clases. No es una lista de bloqueo permanente: conservar el código puede permitir reinscribirse.
 
 Antes de presentar, ejecutar las comprobaciones y confirmar la compilación. Dependencias sincronizadas con autorización de Fernando: comprobaciones de demo y panel y build de producción correctos. No arrancar servidores desde el agente ni afirmar que el móvil real está probado hasta completar ensayo.md.
+
+## Idioma de la interfaz, del contenido y de la voz
+
+1. En la portada, elegir **Français** en el selector. «Soy estudiante» pasa a «Je suis élève». Entrar con «J'ai déjà un identifiant» y «Entrer», usando aula23ana y su contraseña de demo.
+2. Abrir **L'eau et ses états**, materia **Sciences**, de AULA23. En la lectura, pulsar **Écouter**. El contenido lleva `idioma: fr`; comprobar que la voz disponible es francesa. El idioma de la interfaz no debe convertir en francesa una lección española.
+3. Con esa lección descargada y una voz francesa local instalada, repetir sin red. Si falta la voz, demostrar la lectura y explicar la limitación; no inventar soporte de audio offline.
+4. Repetir con English y **The parts of a plant**, materia **Science**, si hay tiempo. Los títulos de las lecciones son contenido: no cambian al modificar el selector de portada.
+5. En «Nueva lección», el paso 4 selecciona el idioma del contenido. La interfaz ya envía esa elección; la API multilingüe está pendiente del cambio de Claude. Usar las lecciones manuales para la demo hasta confirmar la integración.
+
+Francés e inglés están revisados por el equipo. Las demás traducciones son borradores automáticos; los textos faltantes intentan aparecer en inglés y luego en español. El panel está preparado para t(), pero Claude debe extraer y traducir las claves nuevas.
