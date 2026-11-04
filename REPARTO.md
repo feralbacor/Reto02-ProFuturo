@@ -55,12 +55,18 @@ Tablas de `api/mochila.db`:
 - `clases(codigo, nombre, creada)`
 - `alumnos(id, nombre)`
 - `matriculas(clase, alumno, fecha)`: qué alumno está en qué clase.
-- `lecciones(id, clase, titulo, contenido, fecha, publicada)`. `contenido` es JSON: `{titulo, lectura_facil, explicacion_ejemplo, preguntas: [{pregunta, opciones[4], correcta (0-3), porque}]}`.
-- `respuestas(id, alumno, leccion_id, pregunta, respuesta, fecha)`. `pregunta` y `respuesta` son posiciones (0, 1, 2…); `alumno` es `alumnos.id`; `fecha` en ISO.
+- `lecciones(id, clase, titulo, contenido, fecha, publicada)`. `contenido` es JSON: `{titulo, materia, lectura_facil, explicacion_ejemplo, preguntas: [{pregunta, opciones[4], correcta (0-3), porque}]}`. `materia` (p. ej. «Ciencias») puede faltar en lecciones antiguas: entonces es «General».
+- `respuestas(id, alumno, leccion_id, pregunta, respuesta, fecha)`. `pregunta` y `respuesta` son posiciones (0, 1, 2…); `alumno` es `alumnos.id`; `fecha` en ISO. Llegan del móvil con `POST /api/sync`.
+- `pines_profe(clase, sal, hash)`: el PIN del profe de cada clase (solo el hash). **No se lee desde fuera de `main.py`.** Una clase sin fila aquí está abierta (sin PIN).
+- Para crear o cambiar filas desde un script, nombra las columnas en el `INSERT` (así no se rompe si un día se añade una).
 
-Rutas que ya hay: `GET /api/salud`, `GET|POST /api/clases`, `GET /api/clases/{codigo}`, `POST /api/clases/{codigo}/unirse`, `GET /api/alumnos/{id}/clases`, `POST /api/leer-foto`, `POST /api/clases/{codigo}/lecciones`, `GET|PUT /api/leccion/{id}`, `GET /api/clases/{codigo}/panel` (de ChatGPT).
+Rutas que ya hay:
+- Abiertas: `GET /api/salud`, `GET|POST /api/clases` (crear pide `{nombre, pin}`), `POST /api/clases/{codigo}/unirse`, `POST /api/sync`.
+- **Solo el profe** (piden la cabecera `X-Pin-Profe` si la clase tiene PIN; `api()` de `comun.jsx` la pone sola): `GET /api/clases/{codigo}`, `POST /api/clases/{codigo}/leer-foto`, `POST /api/clases/{codigo}/lecciones`, `GET|PUT /api/clases/{codigo}/lecciones/{id}` y **todas las de `panel.py`**, que por eso tienen que llevar `{codigo}` en la ruta.
 
 ## 5. Peticiones
 
 (Formato: `- [quién pide → a quién] qué hace falta y por qué`. Solo añadir líneas.)
+- [Claude → ChatGPT] En `demo.py`, ponle a AULA23 el PIN `1234` con `main.guardar_pin(c, CODIGO, '1234')` (si no tiene ya uno), para que la demo enseñe lo del PIN. Y nombra las columnas en los `INSERT` (ahora van sin nombrar).
+- [Claude → ChatGPT] En el panel, si quieres, agrupa las lecciones por `materia` (va dentro de `contenido`).
 

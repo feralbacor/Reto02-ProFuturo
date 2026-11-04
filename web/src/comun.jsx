@@ -16,14 +16,16 @@ export const titulo = { fontSize: '30px', marginBottom: '20px' }
 // ---------- Utilidades ----------
 export const SIN_CONEXION = 'No hay conexión con el ordenador de la clase.'
 
+// Las rutas /api/clases/{codigo}/... del profe llevan solas el PIN de esa clase, si este aparato lo tiene.
 export async function api(ruta, { method = 'GET', body } = {}) {
+  const headers = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  const codigo = ruta.match(/^\/api\/clases\/([^/?]+)/)?.[1]
+  const pin = codigo && leer('pines-profe', {})[decodeURIComponent(codigo).toUpperCase()]
+  if (pin) headers['X-Pin-Profe'] = pin
   let res
   try {
-    res = await fetch(ruta, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    })
+    res = await fetch(ruta, { method, headers, body: body ? JSON.stringify(body) : undefined })
   } catch {
     throw new Error(SIN_CONEXION)
   }
@@ -31,17 +33,22 @@ export async function api(ruta, { method = 'GET', body } = {}) {
   try { datos = await res.json() } catch { /* respuesta sin JSON */ }
   if (!res.ok) {
     const detalle = datos?.detail
-    if (typeof detalle === 'string') throw new Error(detalle)
-    throw new Error(res.status >= 500 ? 'El ordenador de la clase no responde. Prueba otra vez.' : 'Algo no ha ido bien. Prueba otra vez.')
+    const error = new Error(typeof detalle === 'string' ? detalle
+      : res.status >= 500 ? 'El ordenador de la clase no responde. Prueba otra vez.' : 'Algo no ha ido bien. Prueba otra vez.')
+    error.estado = res.status
+    throw error
   }
   return datos
 }
 
-export const leer = (clave, porDefecto) => {
+export function leer(clave, porDefecto) {
   try { const v = localStorage.getItem(clave); return v ? JSON.parse(v) : porDefecto } catch { return porDefecto }
 }
-export const guardar = (clave, valor) => {
+export function guardar(clave, valor) {
   try { localStorage.setItem(clave, JSON.stringify(valor)) } catch { /* sin espacio o bloqueado */ }
+}
+export function guardarPin(codigo, pin) {
+  guardar('pines-profe', { ...leer('pines-profe', {}), [codigo.toUpperCase()]: pin })
 }
 
 // crypto.randomUUID solo existe con https o en localhost

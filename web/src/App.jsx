@@ -1,7 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  COLOR, pagina, boton, botonVolver, campo, tarjeta, etiqueta, titulo, SIN_CONEXION, api, leer, guardar, nuevoId, reducirFoto, Cargando, Aviso,
+  COLOR, pagina, boton, botonVolver, campo, tarjeta, etiqueta, titulo, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso,
 } from './comun.jsx'
+
+// Agrupa una lista de lecciones por materia, en el orden en que aparece cada materia.
+const porMateria = (lecciones, materiaDe) => {
+  const grupos = new Map()
+  for (const l of lecciones) {
+    const m = materiaDe(l) || 'General'
+    grupos.set(m, [...(grupos.get(m) || []), l])
+  }
+  return [...grupos]
+}
+
+const campoPin = { ...campo, fontSize: '26px', letterSpacing: '8px', fontFamily: 'ui-monospace, Menlo, monospace' }
+const pinValido = (pin) => /^\d{4,8}$/.test(pin)
 import PanelClase from './Panel.jsx'
 
 // ---------- Inicio ----------
@@ -50,7 +63,7 @@ function VistaProfe({ onVolver }) {
     return <ProfeNuevaLeccion codigo={codigo} onVolver={() => setPantalla('clase')} onCreada={editar} />
   }
   if (pantalla === 'revisar' && editando) {
-    return <ProfeRevisar inicial={editando} onVolver={() => setPantalla('clase')} />
+    return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
   }
   return <ProfeClases onAbrir={abrirClase} onVolver={onVolver} />
 }
@@ -58,6 +71,7 @@ function VistaProfe({ onVolver }) {
 function ProfeClases({ onAbrir, onVolver }) {
   const [clases, setClases] = useState(null)
   const [nombre, setNombre] = useState('')
+  const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [creando, setCreando] = useState(false)
 
@@ -70,7 +84,8 @@ function ProfeClases({ onAbrir, onVolver }) {
     setError('')
     setCreando(true)
     try {
-      const clase = await api('/api/clases', { method: 'POST', body: { nombre } })
+      const clase = await api('/api/clases', { method: 'POST', body: { nombre, pin } })
+      guardarPin(clase.codigo, pin)
       onAbrir(clase.codigo)
     } catch (e) {
       setError(e.message)
@@ -86,8 +101,12 @@ function ProfeClases({ onAbrir, onVolver }) {
       <form onSubmit={crear} style={{ ...tarjeta, marginBottom: '30px' }}>
         <label htmlFor="nombre-clase" style={etiqueta}>Crear una clase nueva</label>
         <input id="nombre-clase" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60}
-          placeholder="Por ejemplo: 5.º A · Ciencias" style={{ ...campo, marginBottom: '14px' }} />
-        <button type="submit" disabled={!nombre.trim() || creando} style={boton(COLOR.azul, { width: '100%' })}>
+          placeholder="Por ejemplo: 5.º A · Ciencias" style={{ ...campo, marginBottom: '16px' }} />
+        <label htmlFor="pin-clase" style={{ ...etiqueta, fontSize: '18px' }}>Tu PIN de profe para esta clase (4 a 8 números)</label>
+        <input id="pin-clase" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={pin}
+          onChange={e => setPin(e.target.value.replace(/\D/g, ''))} style={{ ...campoPin, marginBottom: '8px' }} />
+        <p style={{ color: COLOR.suave, marginBottom: '14px', fontSize: '17px' }}>Apúntalo: solo tú podrás abrir la clase y crear lecciones. En otro móvil o tablet te lo pedirá.</p>
+        <button type="submit" disabled={!nombre.trim() || !pinValido(pin) || creando} style={boton(COLOR.azul, { width: '100%' })}>
           {creando ? 'Creando…' : 'Crear clase'}
         </button>
       </form>
@@ -111,26 +130,60 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   const [clase, setClase] = useState(null)
   const [error, setError] = useState('')
   const [abriendo, setAbriendo] = useState(false)
+  const [pidePin, setPidePin] = useState(false)
+  const [pin, setPin] = useState('')
 
   const cargar = useCallback(() => {
-    api(`/api/clases/${encodeURIComponent(codigo)}`).then(c => { setClase(c); setError('') }).catch(e => setError(e.message))
+    api(`/api/clases/${encodeURIComponent(codigo)}`)
+      .then(c => { setClase(c); setError(''); setPidePin(false) })
+      .catch(e => {
+        if (e.estado === 401 || e.estado === 429) { setClase(null); setPidePin(true) }
+        setError(e.message)
+      })
   }, [codigo])
 
   useEffect(() => {
     cargar()
+  }, [cargar])
+
+  useEffect(() => {
+    if (pidePin) return undefined // sin PIN no se insiste: cada intento fallido cuenta
     const t = setInterval(cargar, 10000) // para ver entrar a los alumnos sin recargar
     return () => clearInterval(t)
-  }, [cargar])
+  }, [cargar, pidePin])
+
+  const entrarConPin = (ev) => {
+    ev.preventDefault()
+    guardarPin(codigo, pin)
+    setPin('')
+    cargar()
+  }
 
   const abrirLeccion = async (id) => {
     setAbriendo(true)
     try {
-      const l = await api(`/api/leccion/${id}`)
+      const l = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${id}`)
       onEditar({ id: l.id, leccion: l.contenido, publicada: l.publicada })
     } catch (e) {
       setError(e.message)
       setAbriendo(false)
     }
+  }
+
+  if (pidePin) {
+    return (
+      <div style={pagina}>
+        <button onClick={onVolver} style={botonVolver}>Volver</button>
+        <h1 style={titulo}>Clase {codigo}</h1>
+        <form onSubmit={entrarConPin} style={tarjeta}>
+          <label htmlFor="pin-entrar" style={etiqueta}>Escribe tu PIN de profe</label>
+          <input id="pin-entrar" type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} autoFocus
+            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} style={{ ...campoPin, marginBottom: '14px' }} />
+          <Aviso texto={error} />
+          <button type="submit" disabled={!pinValido(pin)} style={boton(COLOR.azul, { width: '100%' })}>Entrar</button>
+        </form>
+      </div>
+    )
   }
 
   if (!clase) {
@@ -161,17 +214,22 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
 
       <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>Lecciones</h2>
       {clase.lecciones.length === 0 && <p style={{ color: COLOR.suave, marginBottom: '24px' }}>Todavía no hay lecciones. Haz una foto a una página del libro para crear la primera.</p>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
-        {clase.lecciones.map(l => (
-          <button key={l.id} disabled={abriendo} onClick={() => abrirLeccion(l.id)}
-            style={{ ...tarjeta, textAlign: 'left', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-            <span>{l.titulo}</span>
-            <span style={{ fontSize: '16px', fontWeight: 'bold', whiteSpace: 'nowrap', padding: '6px 10px', borderRadius: '8px', color: 'white', backgroundColor: l.publicada ? COLOR.verde : COLOR.suave }}>
-              {l.publicada ? 'Publicada' : 'Borrador'}
-            </span>
-          </button>
-        ))}
-      </div>
+      {porMateria(clase.lecciones, l => l.materia).map(([materia, lecciones]) => (
+        <section key={materia} style={{ marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '20px', color: COLOR.gris, marginBottom: '10px' }}>{materia}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {lecciones.map(l => (
+              <button key={l.id} disabled={abriendo} onClick={() => abrirLeccion(l.id)}
+                style={{ ...tarjeta, textAlign: 'left', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                <span>{l.titulo}</span>
+                <span style={{ fontSize: '16px', fontWeight: 'bold', whiteSpace: 'nowrap', padding: '6px 10px', borderRadius: '8px', color: 'white', backgroundColor: l.publicada ? COLOR.verde : COLOR.suave }}>
+                  {l.publicada ? 'Publicada' : 'Borrador'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
 
       <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>Alumnos ({clase.alumnos.length})</h2>
       {clase.alumnos.length === 0
@@ -194,6 +252,15 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const [error, setError] = useState('')
   const camara = useRef(null)
   const galeria = useRef(null)
+  const [materia, setMateria] = useState('')
+  const [materias, setMaterias] = useState([])
+
+  useEffect(() => {
+    // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
+    api(`/api/clases/${encodeURIComponent(codigo)}`)
+      .then(c => { setMaterias(c.materias); setMateria(m => m || c.materias[0] || '') })
+      .catch(() => {})
+  }, [codigo])
 
   const anadir = async (archivos) => {
     setError('')
@@ -218,7 +285,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     try {
       for (let i = 0; i < lista.length; i++) {
         setOcupado(lista.length > 1 ? `Leyendo la foto ${i + 1} de ${lista.length}…` : 'Leyendo la foto…')
-        const r = await api('/api/leer-foto', { method: 'POST', body: { imagen: lista[i].datos } })
+        const r = await api(`/api/clases/${encodeURIComponent(codigo)}/leer-foto`, { method: 'POST', body: { imagen: lista[i].datos } })
         setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + r.texto)
         setFotos(f => f.filter(x => x.id !== lista[i].id))
         setLeidas(true)
@@ -234,7 +301,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     setError('')
     setOcupado('Preparando la lección… Tarda alrededor de un minuto.')
     try {
-      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones`, { method: 'POST', body: { texto } })
+      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones`, { method: 'POST', body: { texto, materia } })
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
       setError(e.message)
@@ -248,6 +315,11 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     <div style={pagina}>
       <button onClick={onVolver} disabled={!!ocupado} style={botonVolver}>Volver</button>
       <h1 style={titulo}>Nueva lección</h1>
+
+      <label htmlFor="materia" style={etiqueta}>Materia</label>
+      <input id="materia" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
+        placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} style={{ ...campo, marginBottom: '24px' }} />
+      <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
 
       <p style={{ fontSize: '20px', marginBottom: '16px' }}>Haz una foto a la página del libro, o elige fotos que ya tengas (hasta {MAX_FOTOS}).</p>
       <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -289,7 +361,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   )
 }
 
-function ProfeRevisar({ inicial, onVolver }) {
+function ProfeRevisar({ codigo, inicial, onVolver }) {
   const [leccion, setLeccion] = useState(inicial.leccion)
   const [publicada, setPublicada] = useState(!!inicial.publicada)
   const [guardando, setGuardando] = useState(false)
@@ -307,7 +379,8 @@ function ProfeRevisar({ inicial, onVolver }) {
     setGuardando(true)
     setAviso({ texto: '' })
     try {
-      await api(`/api/leccion/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
+      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
+      cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
       if (publicar) setPublicada(true)
       setAviso({
         texto: publicar ? '¡Publicada! Los alumnos la tendrán la próxima vez que se conecten.' : 'Guardado.',
@@ -333,6 +406,8 @@ function ProfeRevisar({ inicial, onVolver }) {
 
       <label style={etiqueta}>Título</label>
       <input value={leccion.titulo} onChange={e => cambiar('titulo', e.target.value)} style={{ ...campo, marginBottom: '20px' }} />
+      <label style={etiqueta}>Materia</label>
+      <input value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder="General" style={{ ...campo, marginBottom: '20px' }} />
       <label style={etiqueta}>Lectura fácil</label>
       {area('lectura_facil', 7)}
       <label style={etiqueta}>Explicación con un ejemplo</label>
@@ -373,40 +448,123 @@ function ProfeRevisar({ inicial, onVolver }) {
 }
 
 // ---------- Alumno ----------
+// Barra fija arriba: dice si las respuestas guardadas en el móvil ya han llegado al profe.
+function BarraEnvio({ estado, pendientes }) {
+  const n = `${pendientes} ${pendientes === 1 ? 'respuesta' : 'respuestas'}`
+  const [fondo, texto] =
+    estado === 'enviando' ? ['#fef08a', pendientes ? `Enviando ${n}…` : 'Buscando lecciones nuevas…']
+      : estado === 'sin-conexion' ? ['#fecaca', pendientes ? `Sin conexión · ${n} por enviar` : 'Sin conexión · puedes seguir usando lo descargado']
+        : estado === 'error' ? ['#fecaca', `No se ha podido enviar · ${n} por enviar · se reintentará solo`]
+          : pendientes ? ['#fef08a', `${n} por enviar`]
+            : ['#bbf7d0', 'Todo enviado ✓']
+  return (
+    <div role="status" style={{ position: 'sticky', top: 0, zIndex: 10, padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', backgroundColor: fondo, color: '#1c1917' }}>
+      {texto}
+    </div>
+  )
+}
+
+// ¿Está la app guardada en el aparato (service worker activo) para abrirla sin conexión?
+// true: sí · false: guardándose · null: este navegador no puede (hace falta https o localhost).
+function useAppGuardada() {
+  const sw = navigator.serviceWorker
+  const [lista, setLista] = useState(import.meta.env.DEV || !!sw?.controller)
+  useEffect(() => { sw?.ready.then(() => setLista(true)) }, [sw])
+  return sw || import.meta.env.DEV ? lista : null
+}
+
+const cuando = (iso) => {
+  const d = new Date(iso)
+  const hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? `hoy a las ${hora}`
+    : `el ${d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })} a las ${hora}`
+}
+
+// Círculo verde con la flecha hacia abajo: «esto ya está en el aparato».
+function IconoDescargado({ tam = 22 }) {
+  return (
+    <svg width={tam} height={tam} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="12" fill={COLOR.verde} />
+      <path d="M12 5.5v9m-4-4 4 4 4-4M7 18h10" stroke="white" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function AvisoDescargado({ lecciones, appGuardada, actualizado }) {
+  const n = lecciones === 1 ? '1 lección guardada' : `${lecciones} lecciones guardadas`
+  const [fondo, borde, color, cabecera, texto] =
+    appGuardada === true ? ['#f0fdf4', COLOR.verde, COLOR.verde, 'Descargado en este aparato', `${n}: ${lecciones === 1 ? 'la' : 'las'} puedes hacer sin conexión.`]
+      : appGuardada === false ? ['#fefce8', '#ca8a04', '#854d0e', 'Guardando la app en este aparato…', `${n}. Espera un momento antes de quedarte sin conexión.`]
+        : ['#fef2f2', COLOR.rojo, COLOR.rojo, 'Sin conexión no se abrirá la app', `${n}, pero este navegador no puede guardar la app. Entra con el enlace https.`]
+  return (
+    <div style={{ ...tarjeta, backgroundColor: fondo, borderColor: borde, marginBottom: '24px' }}>
+      <p style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '20px', fontWeight: 'bold', color }}>
+        {appGuardada === true && <IconoDescargado tam={28} />}{cabecera}
+      </p>
+      <p style={{ fontSize: '18px', marginTop: '6px' }}>{texto}</p>
+      {actualizado && <p style={{ fontSize: '16px', color: COLOR.suave, marginTop: '6px' }}>Última vez que se buscaron lecciones nuevas: {cuando(actualizado)}.</p>}
+    </div>
+  )
+}
+
+const respuestaBienFormada = (r) => r && typeof r.id === 'string' && typeof r.alumno === 'string'
+  && typeof r.leccion_id === 'string' && Number.isInteger(r.pregunta) && Number.isInteger(r.respuesta) && typeof r.fecha === 'string'
+
 function VistaAlumno({ onVolver }) {
   const [perfil, setPerfil] = useState(() => leer('alumno-perfil', null)) // { id, nombre }
   const [clases, setClases] = useState(() => leer('alumno-clases', []))
-  const [sinConexion, setSinConexion] = useState(!navigator.onLine)
-  const [actualizando, setActualizando] = useState(false)
+  const [pendientes, setPendientes] = useState(() => leer('pendientes', []).length)
+  const [estado, setEstado] = useState('ok') // ok | enviando | sin-conexion | error
   const [entrando, setEntrando] = useState(false)
   const [leccion, setLeccion] = useState(null)
+  const [actualizado, setActualizado] = useState(() => leer('alumno-actualizado', null))
+  const appGuardada = useAppGuardada()
+  const enCurso = useRef(false)
 
-  const actualizar = useCallback(async () => {
-    if (!perfil) return
-    setActualizando(true)
+  // Envía las respuestas guardadas sin conexión y se trae las lecciones nuevas (solo si algo ha cambiado).
+  const sincronizar = useCallback(async () => {
+    if (!perfil || enCurso.current) return
+    enCurso.current = true
+    setEstado('enviando')
+    const enviadas = leer('pendientes', []).filter(respuestaBienFormada)
     try {
-      const datos = await api(`/api/alumnos/${perfil.id}/clases`)
-      setClases(datos)
-      guardar('alumno-clases', datos) // así las lecciones se pueden usar sin conexión
-      setSinConexion(!navigator.onLine)
-    } catch {
-      setSinConexion(true)
+      const r = await api('/api/sync', {
+        method: 'POST',
+        body: { alumno_id: perfil.id, respuestas: enviadas, version: leer('alumno-clases', null) ? leer('alumno-version', null) : null },
+      })
+      const recibidas = new Set(r.recibidas)
+      // Las respuestas que se dieron mientras se enviaba se quedan para la próxima vez.
+      const quedan = leer('pendientes', []).filter(p => respuestaBienFormada(p) && !recibidas.has(p.id))
+      guardar('pendientes', quedan)
+      setPendientes(quedan.length)
+      if (r.clases) {
+        setClases(r.clases)
+        guardar('alumno-clases', r.clases) // así las lecciones se pueden usar sin conexión
+      }
+      guardar('alumno-version', r.version)
+      const ahora = new Date().toISOString()
+      guardar('alumno-actualizado', ahora)
+      setActualizado(ahora)
+      setEstado('ok')
+    } catch (e) {
+      setEstado(e.message === SIN_CONEXION ? 'sin-conexion' : 'error')
     } finally {
-      setActualizando(false)
+      enCurso.current = false
     }
   }, [perfil])
 
   useEffect(() => {
-    actualizar()
-    const conectado = () => actualizar()
-    const desconectado = () => setSinConexion(true)
-    window.addEventListener('online', conectado)
+    sincronizar()
+    const cada30s = setInterval(sincronizar, 30000)
+    const desconectado = () => setEstado('sin-conexion')
+    window.addEventListener('online', sincronizar)
     window.addEventListener('offline', desconectado)
     return () => {
-      window.removeEventListener('online', conectado)
+      clearInterval(cada30s)
+      window.removeEventListener('online', sincronizar)
       window.removeEventListener('offline', desconectado)
     }
-  }, [actualizar])
+  }, [sincronizar])
 
   const alEntrar = (p) => {
     guardar('alumno-perfil', p)
@@ -416,55 +574,78 @@ function VistaAlumno({ onVolver }) {
 
   const cambiarDeAlumno = () => {
     if (!window.confirm(`¿Seguro que no eres ${perfil.nombre}?`)) return
-    try { localStorage.removeItem('alumno-perfil'); localStorage.removeItem('alumno-clases') } catch { /* nada */ }
+    // Las respuestas pendientes se quedan: se enviarán igual, cada una lleva su alumno.
+    try { ['alumno-perfil', 'alumno-clases', 'alumno-version', 'alumno-actualizado'].forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
     setPerfil(null)
     setClases([])
+    setActualizado(null)
   }
 
   if (!perfil || entrando) {
     return <AlumnoEntrar perfil={perfil} onEntrado={alEntrar} onVolver={perfil ? () => setEntrando(false) : onVolver} />
   }
+
+  const barra = <BarraEnvio estado={estado} pendientes={pendientes} />
+  const total = clases.reduce((n, c) => n + c.lecciones.length, 0)
   if (leccion) {
-    return <AlumnoLeccion leccion={leccion} alumnoId={perfil.id} onVolver={() => setLeccion(null)} />
+    return (
+      <>
+        {barra}
+        <AlumnoLeccion leccion={leccion} alumnoId={perfil.id} onVolver={() => setLeccion(null)}
+          onRespuesta={() => setPendientes(leer('pendientes', []).length)} onTerminar={sincronizar} />
+      </>
+    )
   }
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={{ ...titulo, marginBottom: '6px' }}>Hola, {perfil.nombre}</h1>
-      <button onClick={cambiarDeAlumno} style={{ background: 'none', border: 'none', color: COLOR.azul, fontSize: '17px', textDecoration: 'underline', cursor: 'pointer', minHeight: '44px', marginBottom: '16px' }}>
-        No soy {perfil.nombre}
-      </button>
-
-      {sinConexion && <Aviso texto="Sin conexión. Puedes usar las lecciones que ya tienes descargadas." color={COLOR.gris} />}
-
-      {clases.length === 0 && <p style={{ color: COLOR.suave, marginBottom: '20px' }}>{sinConexion ? 'Cuando haya conexión aparecerán tus clases.' : 'Todavía no estás en ninguna clase.'}</p>}
-
-      {clases.map(c => (
-        <section key={c.codigo} style={{ marginBottom: '30px' }}>
-          <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>{c.nombre}</h2>
-          {c.lecciones.length === 0
-            ? <p style={{ color: COLOR.suave }}>Tu profe todavía no ha publicado lecciones.</p>
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {c.lecciones.map(l => (
-                  <button key={l.id} onClick={() => setLeccion(l)}
-                    style={{ ...tarjeta, borderColor: COLOR.verde, borderWidth: '3px', textAlign: 'left', fontSize: '22px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    {l.titulo}
-                  </button>
-                ))}
-              </div>
-            )}
-        </section>
-      ))}
-
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={actualizar} disabled={actualizando} style={boton(COLOR.azul, { flex: '1 1 200px' })}>
-          {actualizando ? 'Buscando…' : 'Buscar lecciones nuevas'}
+    <>
+      {barra}
+      <div style={pagina}>
+        <button onClick={onVolver} style={botonVolver}>Volver</button>
+        <h1 style={{ ...titulo, marginBottom: '6px' }}>Hola, {perfil.nombre}</h1>
+        <button onClick={cambiarDeAlumno} style={{ background: 'none', border: 'none', color: COLOR.azul, fontSize: '17px', textDecoration: 'underline', cursor: 'pointer', minHeight: '44px', marginBottom: '16px' }}>
+          No soy {perfil.nombre}
         </button>
-        <button onClick={() => setEntrando(true)} style={boton(COLOR.gris, { flex: '1 1 200px' })}>Entrar en otra clase</button>
+
+        {total > 0 && <AvisoDescargado lecciones={total} appGuardada={appGuardada} actualizado={actualizado} />}
+
+        {clases.length === 0 && <p style={{ color: COLOR.suave, marginBottom: '20px' }}>{estado === 'sin-conexion' ? 'Cuando haya conexión aparecerán tus clases.' : 'Todavía no estás en ninguna clase.'}</p>}
+
+        {clases.map(c => {
+          const grupos = porMateria(c.lecciones, l => l.contenido?.materia)
+          const conTitulos = grupos.length > 1 || (grupos[0] && grupos[0][0] !== 'General')
+          return (
+            <section key={c.codigo} style={{ marginBottom: '30px' }}>
+              <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>{c.nombre}</h2>
+              {c.lecciones.length === 0 && <p style={{ color: COLOR.suave }}>Tu profe todavía no ha publicado lecciones.</p>}
+              {grupos.map(([materia, lecciones]) => (
+                <div key={materia} style={{ marginBottom: '18px' }}>
+                  {conTitulos && <h3 style={{ fontSize: '20px', color: COLOR.gris, marginBottom: '10px' }}>{materia}</h3>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {lecciones.map(l => (
+                      <button key={l.id} onClick={() => setLeccion(l)}
+                        style={{ ...tarjeta, borderColor: COLOR.verde, borderWidth: '3px', textAlign: 'left', fontSize: '22px', fontWeight: 'bold', cursor: 'pointer' }}>
+                        {l.titulo}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '16px', fontWeight: 'normal', color: COLOR.verde }}>
+                          <IconoDescargado />Descargada
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          )
+        })}
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button onClick={sincronizar} disabled={estado === 'enviando'} style={boton(COLOR.azul, { flex: '1 1 200px' })}>
+            {estado === 'enviando' ? 'Buscando…' : 'Buscar lecciones nuevas'}
+          </button>
+          <button onClick={() => setEntrando(true)} style={boton(COLOR.gris, { flex: '1 1 200px' })}>Entrar en otra clase</button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -514,7 +695,7 @@ function AlumnoEntrar({ perfil, onEntrado, onVolver }) {
   )
 }
 
-function AlumnoLeccion({ leccion, alumnoId, onVolver }) {
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
   const [pestana, setPestana] = useState('leer')
   const [n, setN] = useState(0)
@@ -530,6 +711,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver }) {
     const pendientes = leer('pendientes', [])
     pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
     guardar('pendientes', pendientes)
+    onRespuesta()
   }
 
   const siguiente = () => {
@@ -539,6 +721,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver }) {
       setRespondida(false)
     } else {
       setTerminado(true)
+      onTerminar() // si hay conexión, la nota le llega al profe ya
     }
   }
 
