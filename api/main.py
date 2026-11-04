@@ -29,6 +29,9 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mochila.db")
 # Por orden: un túnel a una GPU (si está abierto en el 11435) y, si no, el Ollama de este ordenador.
 OLLAMAS = os.environ.get("OLLAMA_URL", "http://localhost:11435,http://localhost:11434").split(",")
 MODELO = os.environ.get("MODELO_IA", "qwen3-vl:4b-instruct")
+# Siempre el mismo contexto (unos 5,7 GB de RAM): si cambia entre peticiones, Ollama recarga el modelo y una vez se quedó colgado.
+# Cabe un nivel 5 de un tema largo (unos 6000 tokens de texto) con sitio de sobra para lo que escribe.
+CONTEXTO = 16384
 LETRAS_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin O/0 ni I/1, que se confunden
 
 TABLAS = """
@@ -342,7 +345,7 @@ def ollama_disponible():
     return None
 
 
-def preguntar_ia(prompt, imagen=None, formato=None, max_tokens=1500, contexto=8192, espera=300):
+def preguntar_ia(prompt, imagen=None, formato=None, max_tokens=1500, espera=300):
     url = ollama_disponible()
     if not url:
         raise HTTPException(503, f"La IA está apagada o sin descargar. Abre Ollama (y si hace falta: ollama pull {MODELO}).")
@@ -354,7 +357,7 @@ def preguntar_ia(prompt, imagen=None, formato=None, max_tokens=1500, contexto=81
         "messages": [mensaje],
         "stream": False,
         "keep_alive": "30m",
-        "options": {"temperature": 0.3 if formato else 0, "num_ctx": contexto, "num_predict": max_tokens, "repeat_penalty": 1.1},
+        "options": {"temperature": 0.3 if formato else 0, "num_ctx": CONTEXTO, "num_predict": max_tokens, "repeat_penalty": 1.1},
     }
     if formato:
         cuerpo["format"] = formato
@@ -442,7 +445,7 @@ def crear_leccion_con_ia(texto, idioma="es", nivel=1):
     for _ in range(2):  # si sale mal, se intenta una vez más
         # Sin tope de palabras (-2: hasta llenar el contexto, así no se queda colgada repitiendo) y sin prisa:
         # un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
-        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel), max_tokens=-2, contexto=8192 if nivel < 3 else 16384, espera=1800)
+        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel), max_tokens=-2, espera=1800)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
