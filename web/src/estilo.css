@@ -224,3 +224,10 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 .selector-idioma { width: auto; max-width: 60%; min-height: 48px; padding: 0 10px; font-size: 17px; }
 /* En árabe se lee de derecha a izquierda: las flechas miran al otro lado. */
 [dir="rtl"] .icono-seguir, [dir="rtl"] .icono-volver { transform: scaleX(-1); }
+
+/* Barra del nivel de dificultad (0 a 5), grande para el dedo */
+.barra-nivel input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--amarillo); cursor: pointer; }
+.barra-nivel-marcas { display: flex; justify-content: space-between; margin: 0 2px; }
+.barra-nivel-marcas button { min-width: 32px; min-height: 32px; border: 0; background: none; font: inherit; font-size: 17px; font-weight: 650; color: var(--tinta-suave); cursor: pointer; border-radius: 8px; }
+.barra-nivel-marcas button.elegido { background: var(--amarillo); color: var(--sobre-amarillo); }
+.barra-nivel-extremos { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: var(--tinta-suave); margin-top: 4px; }

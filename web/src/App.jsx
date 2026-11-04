@@ -177,6 +177,7 @@ function VistaProfe({ onVolver }) {
   const [codigo, setCodigo] = useState(null)
   const [editando, setEditando] = useState(null) // { id, leccion, publicada, cambio }
   const [porPreparar, setPorPreparar] = useState(null) // la lección «por preparar» que se edita
+  const [materiaNueva, setMateriaNueva] = useState('') // la materia en la que se crea la lección
   const salir = useCallback(() => {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
@@ -194,14 +195,14 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={() => { setPorPreparar(null); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={(m) => { setPorPreparar(null); setMateriaNueva(m); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
       onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
     return <PanelClase codigo={codigo} onVolver={() => setPantalla('clase')} />
   }
   if (pantalla === 'nueva') {
-    return <ProfeNuevaLeccion codigo={codigo} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
+    return <ProfeNuevaLeccion codigo={codigo} materia={porPreparar?.materia || materiaNueva} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
   }
   if (pantalla === 'revisar' && editando) {
     return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
@@ -437,6 +438,10 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
     return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
+  const nuevaMateria = () => {
+    const nombre = window.prompt(t('¿Cómo se llama la materia? Por ejemplo: Ciencias'))?.trim()
+    if (nombre) onNueva(nombre.slice(0, 40))
+  }
   const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
   const quitarPendiente = (p) => {
     if (window.confirm(t('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.'))) {
@@ -485,7 +490,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       <Aviso texto={error} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
-        <button onClick={onNueva} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
+        <button onClick={nuevaMateria} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva materia')}</button>
         <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />{t('Ver notas')}</button>
       </div>
 
@@ -511,10 +516,13 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Lecciones')}</h2>
-        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
+        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva materia» y crea la primera lección.')}</p>}
         {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
           <div key={materia}>
-            <h3 className="subtitulo">{t(materia)}</h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <h3 className="subtitulo">{t(materia)}</h3>
+              <button onClick={() => onNueva(materia)} className="boton boton-secundario boton-pequeno"><Icono nombre="mas" />{t('Nueva lección')}</button>
+            </div>
             <div className="lista">
               {lecciones.map(l => (
                 <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
@@ -581,7 +589,7 @@ const NIVELES = [
   { nombre: 'Experto', pista: 'Lo más extenso y técnico, con preguntas de razonar. 10 preguntas. Tarda más.' },
 ]
 
-function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
+function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
   const MAX_FOTOS = 5
   // inicial: una lección «por preparar» que se edita (con su id, para que no se duplique).
   const [fotos, setFotos] = useState(() => (inicial?.fotos || []).map((datos, i) => ({ id: nuevoId(), nombre: inicial.nombres?.[i] || `Archivo ${i + 1}`, datos })))
@@ -593,20 +601,14 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   const camara = useRef(null)
   const galeria = useRef(null)
   const documento = useRef(null)
-  const [materia, setMateria] = useState(inicial?.materia || '')
   const [titulo, setTitulo] = useState(inicial?.titulo || '')
-  const [materias, setMaterias] = useState([])
   const [ia, setIa] = useState(null)
   const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
   const [nivel, setNivel] = useState(inicial?.nivel ?? 2)
 
   useEffect(() => {
-    // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
-    api(`/api/clases/${encodeURIComponent(codigo)}`)
-      .catch(() => leer(`profe-clase:${codigo}`, { materias: [] })) // sin conexión, las de la última vez
-      .then(c => { setMaterias(c.materias); setMateria(m => m || c.materias[0] || '') })
     api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
-  }, [codigo])
+  }, [])
 
   const anadir = async (archivos) => {
     setError('')
@@ -692,6 +694,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>{t('La clase')}</Volver></header>
+      <p className="subtitulo" style={{ margin: '0 0 4px' }}>{t(materia || 'General')}</p>
       <h1 className="titulo">{inicial ? t('Lección por preparar') : t('Nueva lección')}</h1>
       <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.')}</p>
       {ia === 'apagada' && (
@@ -741,7 +744,20 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">3</span><label htmlFor="nivel-leccion">{t('El nivel')}</label></h2>
+        <div className="barra-nivel">
+          <input id="nivel-leccion" type="range" min={0} max={5} step={1} value={nivel} onChange={e => setNivel(Number(e.target.value))}
+            disabled={!!ocupado} aria-valuetext={`${nivel} · ${t(NIVELES[nivel].nombre)}`} />
+          <div className="barra-nivel-marcas" aria-hidden="true">
+            {NIVELES.map((n, i) => <button key={i} type="button" tabIndex={-1} onClick={() => setNivel(i)} disabled={!!ocupado} className={nivel === i ? 'elegido' : ''}>{i}</button>)}
+          </div>
+          <div className="barra-nivel-extremos" aria-hidden="true"><span>{t('Más corto y sencillo')}</span><span>{t('Más extenso y técnico')}</span></div>
+        </div>
+        <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
         <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
           {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
         </label>
@@ -750,26 +766,10 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
         {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
       </section>
 
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('La materia')}</h2>
-        <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
-          placeholder={t('Por ejemplo: Ciencias')} disabled={!!ocupado} aria-label={t('Materia')} />
-        <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
-      </section>
+
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El nivel')}</h2>
-        <div className="botones-fila" role="group" aria-label={t('El nivel')}>
-          {NIVELES.map((n, i) => (
-            <button key={i} type="button" onClick={() => setNivel(i)} disabled={!!ocupado} aria-pressed={nivel === i} aria-label={`${i} · ${t(n.nombre)}`}
-              className={`boton ${nivel === i ? 'boton-principal' : 'boton-secundario'}`} style={{ minWidth: 54, padding: 0 }}>{i}</button>
-          ))}
-        </div>
-        <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
-      </section>
-
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">6</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>

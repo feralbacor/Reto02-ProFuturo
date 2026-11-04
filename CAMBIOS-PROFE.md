@@ -110,7 +110,9 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 ## 6. Nivel de dificultad (0 a 5)
 
 **Lo que ve el profe**
-- En «Nueva lección», paso 5 **«El nivel»**: seis botones del 0 al 5 (por defecto, 2). Debajo dice qué es cada uno: 0 Lo esencial · 1 Básico · 2 Normal · 3 Completo · 4 Avanzado · 5 Experto. El idioma pasa a ser el paso 6.
+- «Nueva lección» tiene ahora estos pasos: **1 El título · 2 Las fotos o los archivos · 3 El nivel · 4 El texto · 5 El idioma**.
+- **El nivel** se elige con una barra del 0 al 5 (por defecto, 2), con los números debajo para tocarlos. Debajo dice qué es cada uno: 0 Lo esencial · 1 Básico · 2 Normal · 3 Completo · 4 Avanzado · 5 Experto.
+- **Ya no hay paso «La materia»**: en la clase, cada materia tiene su botón «Nueva lección», y la lección se crea en esa materia (se ve encima del título). Para una materia nueva, «Nueva materia» arriba pide el nombre y abre «Nueva lección» en ella.
 - Cuanto más alto, **más larga y más técnica**: la lectura va de unas 60–120 palabras (0) a **al menos 800 y sin máximo** (5; del 3 al 5 no hay máximo), el ejemplo es un caso práctico real si el tema es técnico, y las preguntas pasan de 5 de recordar a 10 de razonar y aplicar.
 - **El nivel va según el tema**: la IA mira primero para qué curso es el texto (primaria, ESO, bachillerato, FP o universidad) y el nivel sube o baja dentro de ese curso. Un 4 de 2.º de la ESO es más fácil que un 2 de 3.º de carrera.
 - Las lecciones «por preparar» guardan su nivel.
