@@ -38,7 +38,8 @@ TABLAS = """
 CREATE TABLE IF NOT EXISTS clases (
     codigo TEXT PRIMARY KEY,
     nombre TEXT NOT NULL,
-    creada TEXT NOT NULL
+    creada TEXT NOT NULL,
+    oculta INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS alumnos (
     id TEXT PRIMARY KEY,
