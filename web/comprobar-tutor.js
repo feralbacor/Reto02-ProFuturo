@@ -19,4 +19,6 @@ assert.match(textos(plantas, '¿Qué es la fotosíntesis?'), /^Las hojas aprovec
 assert.match(textos(plantas, 'que absorben las raices'), /También absorben agua/)
 for (const duda of ['¿Qué son los volcanes?', 'hola', '', '¿?']) assert.deepEqual(buscar(agua, duda), [], duda) // no se inventa nada
 assert.deepEqual(buscar({}, 'agua'), []) // lección sin textos
+// Pista del test: la pregunta y su opción buena llevan a la frase de la lección donde está.
+assert.equal(textos(agua, '¿Qué forma las nubes? Gotas pequeñas'), 'Forma gotas pequeñas que se juntan en las nubes: es la condensación.')
 console.log('Tutor correcto: encuentra la frase, une «Este…» con la anterior y no contesta lo que no está.')
