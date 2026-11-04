@@ -19,7 +19,10 @@ def db():
 
 def instante(fecha):
     # Las fechas antiguas son locales; las del móvil pueden incluir Z u otro huso.
-    return datetime.fromisoformat(fecha.replace('Z', '+00:00')).astimezone()
+    try:
+        return datetime.fromisoformat(fecha.replace('Z', '+00:00')).astimezone()
+    except (ValueError, TypeError, AttributeError, OverflowError, OSError):
+        return None
 
 
 @router.get('/api/clases/{codigo}/panel')
@@ -42,9 +45,12 @@ def panel(codigo: str):
     for r in respuestas:
         if not 0 <= r['pregunta'] < len(preguntas[r['leccion_id']]):
             continue
+        momento = instante(r['fecha'])
+        if momento is None:
+            continue  # No calcular notas ni inactividad con una fecha inválida.
         clave = (r['alumno'], r['leccion_id'], r['pregunta'])
         anterior = ultimas.get(clave)
-        if anterior is None or (instante(r['fecha']), r['id']) > (instante(anterior['fecha']), anterior['id']):
+        if anterior is None or (momento, r['id']) > (instante(anterior['fecha']), anterior['id']):
             ultimas[clave] = r
     resultado = []
     limite = datetime.now().astimezone() - timedelta(days=3)
@@ -63,7 +69,9 @@ def panel(codigo: str):
             # No marcar como nota baja un test que todavía se está completando.
             if rs and len(rs) == len(ps) and aciertos / len(ps) < 3 / 5:
                 motivos.append(f"Menos de 3 de cada 5 aciertos en «{l['titulo']}».")
-        if instante(ultima or alumno['fecha']) < limite:
+        referencia = instante(ultima or alumno['fecha'])
+        # Sin fecha de matrícula válida ni respuestas, no se puede deducir inactividad.
+        if referencia is not None and referencia < limite:
             motivos.append('Más de 3 días sin respuestas recibidas.' if ultima else 'Más de 3 días sin recibir ninguna respuesta desde su inscripción.')
         resultado.append(dict(id=alumno['id'], nombre=alumno['nombre'], notas=notas, ultima_respuesta=ultima, motivos=motivos))
     return {**dict(clase), 'lecciones': [dict(id=l['id'], titulo=l['titulo']) for l in lecciones], 'alumnos': resultado}

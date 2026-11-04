@@ -55,23 +55,40 @@ with tempfile.TemporaryDirectory() as carpeta:
     leccion = demo.identificador('leccion-0')
     # Un intento anterior no debe reemplazar la última respuesta.
     with sqlite3.connect(panel.DB_PATH) as c:
-        c.execute('INSERT INTO respuestas VALUES (?, ?, ?, 0, 0, ?)',
+        c.execute('INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, 0, 0, ?)',
                   ('vieja', ana, leccion, (datetime.now() - timedelta(days=10)).isoformat()))
         # ISO con huso: comparar instantes, no cadenas de texto.
         futura = datetime.now(timezone.utc) + timedelta(hours=1)
-        c.execute('INSERT INTO respuestas VALUES (?, ?, ?, 0, 0, ?)', ('nueva', ana, leccion, futura.isoformat()))
-        c.execute('INSERT INTO respuestas VALUES (?, ?, ?, 99, 0, ?)', ('invalida', ana, leccion, futura.isoformat()))
-        c.execute("INSERT INTO clases VALUES ('OTRA12', 'Otra clase', '2026-01-01')")
-        c.execute("INSERT INTO alumnos VALUES ('reciente', 'Reciente')")
-        c.execute('INSERT INTO matriculas VALUES (?, ?, ?)', ('AULA23', 'reciente', datetime.now().isoformat()))
-        c.execute("INSERT INTO alumnos VALUES ('antiguo', 'Antiguo')")
-        c.execute('INSERT INTO matriculas VALUES (?, ?, ?)', ('AULA23', 'antiguo', (datetime.now() - timedelta(days=4)).isoformat()))
+        c.execute('INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, 0, 0, ?)', ('nueva', ana, leccion, futura.isoformat()))
+        c.execute('INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, 99, 0, ?)', ('invalida', ana, leccion, futura.isoformat()))
+        c.execute("INSERT INTO clases (codigo, nombre, creada) VALUES ('OTRA12', 'Otra clase', '2026-01-01')")
+        c.execute("INSERT INTO alumnos (id, nombre) VALUES ('reciente', 'Reciente')")
+        c.execute('INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', ('AULA23', 'reciente', datetime.now().isoformat()))
+        c.execute("INSERT INTO alumnos (id, nombre) VALUES ('antiguo', 'Antiguo')")
+        c.execute('INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', ('AULA23', 'antiguo', (datetime.now() - timedelta(days=4)).isoformat()))
     datos = panel.panel('AULA23')
     a = next(a for a in datos['alumnos'] if a['id'] == ana)
     assert next(n for n in a['notas'] if n['leccion_id'] == leccion)['aciertos'] == 4
     assert not next(a for a in datos['alumnos'] if a['id'] == 'reciente')['motivos']
     assert next(a for a in datos['alumnos'] if a['id'] == 'antiguo')['motivos']
     assert panel.panel('OTRA12')['alumnos'] == []
+    # Fechas inválidas: las respuestas válidas siguen contando y el panel no falla.
+    for valor in ('no-es-fecha', None, 123, '9999-12-31T23:59:59-23:59'):
+        assert panel.instante(valor) is None
+    valida = datetime.now().isoformat()
+    with sqlite3.connect(panel.DB_PATH) as c:
+        for alumno in ('fecharota', 'matricularota'):
+            c.execute('INSERT INTO alumnos (id, nombre) VALUES (?, ?)', (alumno, alumno))
+        c.execute('INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', ('AULA23', 'fecharota', valida))
+        c.execute('INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', ('AULA23', 'matricularota', 'no-es-fecha'))
+        for id_, pregunta, fecha in (('ok', 0, valida), ('rota-0', 0, 'no-es-fecha'), ('rota-1', 1, 'no-es-fecha')):
+            c.execute('INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, ?, 0, ?)',
+                      (id_, 'fecharota', leccion, pregunta, fecha))
+    alumnos = {a['id']: a for a in panel.panel('AULA23')['alumnos']}
+    nota = next(n for n in alumnos['fecharota']['notas'] if n['leccion_id'] == leccion)
+    assert nota['respondidas'] == 1 and nota['ultima_respuesta'] == valida
+    assert alumnos['fecharota']['ultima_respuesta'] == valida and not alumnos['fecharota']['motivos']
+    assert alumnos['matricularota']['ultima_respuesta'] is None and not alumnos['matricularota']['motivos']
     try:
         panel.panel('NOEXIS')
         raise AssertionError('Debe devolver 404')
@@ -129,4 +146,4 @@ with tempfile.TemporaryDirectory() as carpeta:
             assert not c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', ('AULA23', ana)).fetchone()
     finally:
         main.DB_PATH = original
-print('Panel correcto: notas, baja con PIN, aislamiento, cuenta conservada, rollback, 404 y sincronización tras la baja.')
+print('Panel correcto: fechas inválidas, notas, baja con PIN, aislamiento, cuenta conservada, rollback, 404 y sincronización tras la baja.')
