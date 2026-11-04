@@ -13,7 +13,8 @@ Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`.
 | `343fa75` | Editar lecciones: publicadas y borradores también sin conexión, y las que esperan «Por preparar» |
 | `2c29a5e` | Unión con `main` (idiomas, dudas, tutor) |
 | `3ed1b14` | Nivel de dificultad de la lección, de 0 a 5 |
-| (este) | Cuántas preguntas (0 a 30) y su dificultad (0 a 5) |
+| `256f28f` | Cuántas preguntas (0 a 30) y su dificultad (0 a 5) |
+| `485da6e` | Al guardar o publicar, vuelve sola a la clase |
 
 ## Archivos que se modifican
 
