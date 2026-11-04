@@ -2,6 +2,8 @@
 import json
 import sqlite3
 import sys
+import tempfile
+from pathlib import Path
 import uuid
 from contextlib import closing
 from datetime import datetime, timedelta
@@ -45,37 +47,66 @@ LECCIONES = [
 def crear_demo(c, fecha=None):
     fecha = fecha or datetime.now()
     antigua = (fecha - timedelta(days=7)).isoformat(timespec='seconds')
-    c.execute('INSERT OR IGNORE INTO clases VALUES (?, ?, ?)', (CODIGO, '5.º A · Ciencias', antigua))
+    c.execute('INSERT OR IGNORE INTO clases (codigo, nombre, creada) VALUES (?, ?, ?)', (CODIGO, '5.º A · Ciencias', antigua))
+    if not c.execute('SELECT 1 FROM pines_profe WHERE clase = ?', (CODIGO,)).fetchone():
+        main.guardar_pin(c, CODIGO, '1234')
     for i, contenido in enumerate(LECCIONES):
-        c.execute('INSERT OR IGNORE INTO lecciones VALUES (?, ?, ?, ?, ?, 1)',
+        c.execute('INSERT OR IGNORE INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 1)',
                   (identificador(f'leccion-{i}'), CODIGO, contenido['titulo'], json.dumps(contenido, ensure_ascii=False), antigua))
     # Solo Diego tiene nota baja; Elena lleva cinco días sin responder.
     for i, nombre in enumerate(['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Farid']):
         alumno = identificador(f'alumno-{i}')
-        c.execute('INSERT OR IGNORE INTO alumnos VALUES (?, ?)', (alumno, nombre))
-        c.execute('INSERT OR IGNORE INTO matriculas VALUES (?, ?, ?)', (CODIGO, alumno, antigua))
+        c.execute('INSERT OR IGNORE INTO alumnos (id, nombre) VALUES (?, ?)', (alumno, nombre))
+        c.execute('INSERT OR IGNORE INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', (CODIGO, alumno, antigua))
+        if not c.execute('SELECT 1 FROM cuentas_alumno WHERE alumno = ?', (alumno,)).fetchone():
+            usuario = f'aula23{nombre.lower()}'
+            if c.execute('SELECT 1 FROM cuentas_alumno WHERE usuario = ?', (usuario,)).fetchone():
+                usuario = main.usuario_libre(c, usuario)
+            main.guardar_contrasena(c, alumno, '1234', usuario)
         for j, contenido in enumerate(LECCIONES):
             aciertos = [5, 4, 3, 2, 4, 5][i]
             momento = (fecha - timedelta(days=5 if i == 4 else j, hours=i)).isoformat(timespec='seconds')
             for k, pregunta in enumerate(contenido['preguntas']):
                 opcion = pregunta['correcta'] if k < aciertos else (pregunta['correcta'] + 1) % 4
-                c.execute('INSERT OR IGNORE INTO respuestas VALUES (?, ?, ?, ?, ?, ?)',
+                c.execute('INSERT OR IGNORE INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, ?, ?, ?)',
                           (identificador(f'respuesta-{i}-{j}-{k}'), alumno, identificador(f'leccion-{j}'), k, opcion, momento))
 
 
 def comprobar():
-    with closing(sqlite3.connect(':memory:')) as c, c:
-        c.executescript(main.TABLAS)
-        c.execute("INSERT INTO clases VALUES ('OTRA12', 'No tocar', '2026-01-01')")
-        crear_demo(c)
-        antes = '\n'.join(c.iterdump())
-        crear_demo(c, datetime.now() + timedelta(days=1))
-        assert '\n'.join(c.iterdump()) == antes, 'La segunda ejecución cambia datos'
-        assert c.execute('SELECT COUNT(*) FROM alumnos').fetchone()[0] == 6
-        assert c.execute('SELECT COUNT(*) FROM lecciones').fetchone()[0] == 2
-        assert c.execute('SELECT COUNT(*) FROM respuestas').fetchone()[0] == 60
-        assert all(main.leccion_valida(l) for l in LECCIONES)
-    print('Correcto: 6 alumnos, 2 lecciones, 60 respuestas; repetible y sin cambiar otra clase.')
+    original = main.DB_PATH
+    try:
+        with tempfile.TemporaryDirectory() as carpeta:
+            main.DB_PATH = str(Path(carpeta) / 'prueba.db')
+            with closing(main.db()) as c, c:
+                c.executescript(main.TABLAS)
+                c.execute("INSERT INTO clases (codigo, nombre, creada) VALUES ('OTRA12', 'No tocar', '2026-01-01')")
+                c.execute("INSERT INTO alumnos (id, nombre) VALUES ('otro', 'Otro alumno')")
+                main.guardar_contrasena(c, 'otro', 'otra1234', 'aula23ana')
+                crear_demo(c)
+                antes = '\n'.join(c.iterdump())
+                crear_demo(c, datetime.now() + timedelta(days=1))
+                assert '\n'.join(c.iterdump()) == antes, 'La segunda ejecución cambia datos'
+                assert c.execute('SELECT COUNT(*) FROM matriculas WHERE clase = ?', (CODIGO,)).fetchone()[0] == 6
+                assert c.execute('SELECT COUNT(*) FROM lecciones').fetchone()[0] == 2
+                assert c.execute('SELECT COUNT(*) FROM respuestas').fetchone()[0] == 60
+                assert all(main.leccion_valida(l) for l in LECCIONES)
+            main.comprobar_pin(CODIGO, '1234')
+            for i, nombre in enumerate(['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Farid']):
+                usuario = 'aula23ana2' if i == 0 else f'aula23{nombre.lower()}'
+                assert main.entrar_alumno(main.Entrar(usuario=usuario, contrasena='1234'))['id'] == identificador(f'alumno-{i}')
+            assert main.entrar_alumno(main.Entrar(usuario='aula23ana', contrasena='otra1234'))['id'] == 'otro'
+            # Una carga posterior no restablece contraseñas ni PIN cambiados por el profe.
+            with closing(main.db()) as c, c:
+                main.guardar_pin(c, CODIGO, '5678')
+                main.guardar_contrasena(c, identificador('alumno-3'), 'nueva1234')
+                antes = '\n'.join(c.iterdump())
+                crear_demo(c)
+                assert '\n'.join(c.iterdump()) == antes
+            main.comprobar_pin(CODIGO, '5678')
+            assert main.entrar_alumno(main.Entrar(usuario='aula23diego', contrasena='nueva1234'))['id'] == identificador('alumno-3')
+    finally:
+        main.DB_PATH = original
+    print('Correcto: demo repetible, PIN, seis accesos, colisiones y contraseñas existentes conservadas.')
 
 
 if __name__ == '__main__':
@@ -84,4 +115,4 @@ if __name__ == '__main__':
     else:
         with closing(main.db()) as c, c:
             crear_demo(c)
-        print('Demo preparada: AULA23 · 5.º A · Ciencias. Repetir el comando no duplica ni reinicia datos.')
+        print('Demo preparada: AULA23 · 5.º A · Ciencias. PIN y contraseñas iniciales: 1234; se conservan si ya existían. Usuarios base: aula23ana, aula23bruno, aula23carla, aula23diego, aula23elena, aula23farid. Si alguno estaba ocupado, consulta el usuario asignado en la clase del profe.')
