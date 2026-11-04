@@ -7,6 +7,7 @@ const celda = { padding: '14px', textAlign: 'left', borderBottom: `1px solid ${C
 export default function PanelClase({ codigo, onVolver }) {
   const [datos, setDatos] = useState(null)
   const [error, setError] = useState('')
+  const [errorBaja, setErrorBaja] = useState('')
   const [cargando, setCargando] = useState(true)
   const [revision, setRevision] = useState(0)
   const [quitando, setQuitando] = useState(null)
@@ -26,14 +27,14 @@ export default function PanelClase({ codigo, onVolver }) {
   const quitar = async (alumno) => {
     if (quitando || !window.confirm(`¿Quitar a ${alumno.nombre} de la clase? Se borran sus respuestas de esta clase.`)) return
     setQuitando(alumno.id)
-    setError('')
+    setErrorBaja('')
     try {
       await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${encodeURIComponent(alumno.id)}`, { method: 'DELETE' })
-      setRevision(r => r + 1)
     } catch (e) {
-      setError(e.message)
+      setErrorBaja(e.message)
     } finally {
       setQuitando(null)
+      setRevision(r => r + 1)
     }
   }
 
@@ -42,9 +43,9 @@ export default function PanelClase({ codigo, onVolver }) {
     <div style={{ ...pagina, fontSize: '18px' }}>
       <button onClick={onVolver} style={botonVolver}>Volver a la clase</button>
       <h1 style={titulo}>Notas de la clase</h1>
-      <button disabled={cargando || !!quitando} onClick={() => setRevision(r => r + 1)} style={boton()}>Actualizar notas</button>
+      <button disabled={cargando || !!quitando} onClick={() => { setErrorBaja(''); setRevision(r => r + 1) }} style={boton()}>Actualizar notas</button>
       {cargando && <Cargando texto="Cargando notas…" />}
-      <Aviso texto={error} />
+      <Aviso texto={error || errorBaja} />
       {datos && <>
         <h2 style={{ margin: '24px 0 16px', fontSize: '24px' }}>{datos.nombre}</h2>
         <p style={{ marginBottom: '20px' }}>Solo aparecen respuestas recibidas por el ordenador de la clase. La falta de conexión puede retrasarlas.</p>
