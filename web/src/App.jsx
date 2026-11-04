@@ -34,6 +34,24 @@ function Volver({ onClick, disabled, children }) {
   return <button className="boton boton-fantasma volver" onClick={onClick} disabled={disabled}><Icono nombre="volver" />{children ?? t('Volver')}</button>
 }
 
+// El botón ⋮ a la derecha de una fila: abre debajo sus opciones. Cada opción es [texto, acción, peligrosa].
+function Menu({ nombre, opciones }) {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <div className="menu">
+      <button className="boton boton-secundario menu-boton" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}
+        aria-label={t('Opciones de «{nombre}»', { nombre })}>⋮</button>
+      {abierto && (
+        <div className="menu-lista">
+          {opciones.map(([texto, accion, peligrosa]) => (
+            <button key={texto} className={`boton boton-secundario ${peligrosa ? 'menu-peligro' : ''}`} onClick={() => { setAbierto(false); accion() }}>{texto}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------- Inicio ----------
 function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
@@ -270,6 +288,16 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     }
   }
 
+  const borrarClase = async (c) => {
+    if (!window.confirm(t('¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.', { nombre: c.nombre }))) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(c.codigo)}`, { method: 'DELETE' })
+      setClases(todas => { const quedan = todas.filter(x => x.codigo !== c.codigo); guardar('profe-clases', quedan); return quedan })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const hay = clases?.length > 0
   return (
     <div className="pagina">
@@ -285,7 +313,8 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
       {hay && (
         <div className="lista" style={{ marginTop: 24 }}>
           {clases.map(c => (
-            <button key={c.codigo} className="fila" onClick={() => onAbrir(c.codigo)}>
+            <div key={c.codigo} className="fila-con-menu">
+            <button className="fila" onClick={() => onAbrir(c.codigo)}>
               <span className="fila-texto">
                 <span className="fila-titulo">{c.nombre}</span>
                 <span className="fila-detalle">
@@ -296,6 +325,8 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
               </span>
               <Icono nombre="seguir" className="icono-final" />
             </button>
+            <Menu nombre={c.nombre} opciones={[[t('Eliminar la clase'), () => borrarClase(c), true]]} />
+            </div>
           ))}
         </div>
       )}
@@ -393,6 +424,16 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   const pendientes = usePendientesProfe().filter(p => p.codigo === codigo)
   // La lección entera ya viene con la clase: se abre también sin conexión.
   const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada })
+  const cambiarLeccion = async (l, borrar) => {
+    if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
+    try {
+      const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
+      await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
+      cargar()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
   const quitarPendiente = (p) => {
     if (window.confirm(t('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.'))) {
       guardarPendientesProfe(leerPendientesProfe().filter(x => x.id !== p.id))
@@ -469,11 +510,17 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
             <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
               {lecciones.map(l => (
-                <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
-                  <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
-                  <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
-                  <Icono nombre="seguir" className="icono-final" />
-                </button>
+                <div key={l.id} className="fila-con-menu">
+                  <button onClick={() => abrirLeccion(l)} className="fila">
+                    <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                    <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
+                    <Icono nombre="seguir" className="icono-final" />
+                  </button>
+                  <Menu nombre={l.titulo} opciones={[
+                    [l.publicada ? t('Ocultar a los alumnos') : t('Publicar'), () => cambiarLeccion(l, false)],
+                    [t('Eliminar la lección'), () => cambiarLeccion(l, true), true],
+                  ]} />
+                </div>
               ))}
             </div>
           </div>

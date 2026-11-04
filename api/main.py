@@ -919,6 +919,45 @@ def guardar_leccion(codigo: str, leccion_id: str, datos: GuardarLeccion):
     return {"ok": True, "materia": leccion["materia"]}
 
 
+class Publicada(BaseModel):
+    publicada: bool
+
+
+@app.put("/api/clases/{codigo}/lecciones/{leccion_id}/publicada", dependencies=SOLO_PROFE)
+def publicar_u_ocultar(codigo: str, leccion_id: str, datos: Publicada):
+    """Ocultar quita la lección de los móviles en su próxima sincronización; sus notas se quedan para cuando se vuelva a publicar."""
+    with closing(db()) as c, c:
+        buscar_leccion(c, codigo, leccion_id)
+        c.execute("UPDATE lecciones SET publicada = ? WHERE id = ?", (int(datos.publicada), leccion_id))
+    return {"publicada": datos.publicada}
+
+
+def borrar_lecciones(c, donde: str, valor: str):
+    # Primero lo que cuelga de cada lección: sus respuestas y sus dudas.
+    for tabla in ("respuestas", "dudas"):
+        c.execute(f"DELETE FROM {tabla} WHERE leccion_id IN (SELECT id FROM lecciones WHERE {donde} = ?)", (valor,))
+    c.execute(f"DELETE FROM lecciones WHERE {donde} = ?", (valor,))
+
+
+@app.delete("/api/clases/{codigo}/lecciones/{leccion_id}", dependencies=SOLO_PROFE)
+def borrar_leccion(codigo: str, leccion_id: str):
+    with closing(db()) as c, c:
+        borrar_lecciones(c, "id", buscar_leccion(c, codigo, leccion_id)["id"])
+    return {"ok": True}
+
+
+@app.delete("/api/clases/{codigo}", dependencies=SOLO_PROFE)
+def borrar_clase(codigo: str):
+    """Se borran sus lecciones (con sus notas y dudas) y quién está en ella. Los alumnos siguen, por si están en otras clases."""
+    with closing(db()) as c, c:
+        codigo = buscar_clase(c, codigo)["codigo"]
+        borrar_lecciones(c, "clase", codigo)
+        for tabla in ("matriculas", "clases_profe", "pines_profe"):
+            c.execute(f"DELETE FROM {tabla} WHERE clase = ?", (codigo,))
+        c.execute("DELETE FROM clases WHERE codigo = ?", (codigo,))
+    return {"ok": True}
+
+
 # Panel de notas: es de ChatGPT (ver REPARTO.md). Sus rutas están en panel.py y piden el PIN del profe.
 from panel import router as router_panel  # noqa: E402
 

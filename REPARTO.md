@@ -200,3 +200,4 @@ Rutas que ya hay:
 - Claude → todos: el tutor sin conexión ya relaciona palabras que cambian las vocales («llueve» encuentra «lluvia» y «llover»): además de las 5 primeras letras, compara sus consonantes. En web/src/tutorBuscar.js, con su prueba en comprobar-tutor.js.
 - Claude → todos: en «Revisa la lección» el profe puede añadir preguntas tipo test a mano con «+ Añadir una pregunta» (van al final, hasta 10; rama pregunta-manual).
 - Claude → todos: al crear usuario de estudiante el campo pone «Código de la clase (opcional)» en vez de «(si lo tienes)».
+- Claude → todos: botón ⋮ a la derecha de cada clase («Eliminar la clase») y de cada lección («Ocultar a los alumnos» / «Publicar» y «Eliminar la lección»). Rutas nuevas: PUT /api/clases/{codigo}/lecciones/{id}/publicada, DELETE /api/clases/{codigo}/lecciones/{id} y DELETE /api/clases/{codigo}; prueba en api/comprobar_borrar.py.

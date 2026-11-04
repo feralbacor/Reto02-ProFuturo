@@ -305,5 +305,11 @@
  "Eso no está en esta lección. Pregúntaselo a tu profe.": "Ce n'est pas dans cette leçon. Demande à ton prof.",
  "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección.": "Ça n'a rien à voir avec cette leçon, alors je ne peux pas te répondre. Pose-moi une question sur la leçon.",
  "No hay ninguna clase con ese código.": "Il n'y a aucune classe avec ce code.",
- "El alumno ya no está en esta clase.": "L'élève n'est plus dans cette classe."
+ "El alumno ya no está en esta clase.": "L'élève n'est plus dans cette classe.",
+ "Opciones de «{nombre}»": "Options de « {nombre} »",
+ "Eliminar la clase": "Supprimer la classe",
+ "¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.": "Supprimer la classe « {nombre} » ? Ses leçons et les notes de ses élèves seront supprimées. C'est définitif.",
+ "Ocultar a los alumnos": "Cacher aux élèves",
+ "Eliminar la lección": "Supprimer la leçon",
+ "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Supprimer la leçon « {titulo} » ? Les notes et les questions de tes élèves seront aussi supprimées. C'est définitif."
 }

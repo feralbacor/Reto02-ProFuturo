@@ -224,3 +224,12 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 .selector-idioma { width: auto; max-width: 60%; min-height: 48px; padding: 0 10px; font-size: 17px; }
 /* En árabe se lee de derecha a izquierda: las flechas miran al otro lado. */
 [dir="rtl"] .icono-seguir, [dir="rtl"] .icono-volver { transform: scaleX(-1); }
+
+/* El botón ⋮ de las clases y las lecciones del profe, y sus opciones */
+.fila-con-menu { display: flex; align-items: stretch; gap: 8px; }
+.fila-con-menu > .fila { flex: 1; min-width: 0; }
+.menu { position: relative; display: flex; }
+.menu-boton { width: 56px; padding: 0; font-size: 28px; line-height: 1; }
+.menu-lista { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 10; display: flex; flex-direction: column; gap: 8px; min-width: 240px; padding: 8px; background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 14px; box-shadow: var(--sombra-media); }
+.menu-lista .boton { width: 100%; justify-content: flex-start; }
+.menu-peligro { color: var(--rojo); }
