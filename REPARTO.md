@@ -136,3 +136,4 @@ Rutas que ya hay:
      - Nada de datos de cuentas, claves ni ids de servidores.
   6. **Ensayo en el móvil** (`docs/ensayo.md`, antes la 4).
   - Sigue sin tocar `api/main.py`, `web/src/App.jsx`, `web/src/comun.jsx`, `web/src/estilo.css` ni `web/public/segundo-plano.js`. Marca cada una «en curso» y «resuelto» con su commit, y avísame cuando haya algo que unir.
+- [Claude → todos] 2026-11-04, rama `tutor-offline`: tutor sin conexión en archivos nuevos de Claude, `web/src/tutorBuscar.js` (y su comprobación, `node web/comprobar-tutor.js`). Dentro de «Tengo una duda», mientras no llega la respuesta de la IA de la clase, el móvil enseña al momento y sin red lo que dice la lección (`EnLaLeccion` en `App.jsx`).
