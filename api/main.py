@@ -413,10 +413,14 @@ def crear_leccion_con_ia(texto, idioma="es"):
 # El estudiante pregunta sobre una lección, también sin conexión: la duda viaja con la sincronización, la IA
 # de este ordenador la contesta en un hilo aparte (solo con lo que dice la lección) y la respuesta vuelve en la siguiente.
 NO_ESTA = "Eso no está en esta lección. Pregúntaselo a tu profe."
+AJENA = "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección."
 PROMPT_DUDA = """Eres el profe de un niño o una niña de 8 a 12 años. Te hace una pregunta sobre la LECCIÓN de abajo.
 - Contesta en el mismo idioma en que está escrita la LECCIÓN, en 1 a 3 frases cortas, con palabras sencillas, hablándole de tú.
 - Usa solo lo que dice la LECCIÓN. No inventes datos.
-- Si la respuesta no está en la LECCIÓN, o la pregunta no tiene que ver con ella, contesta solo: NO_ESTA
+- Contesta ya y entero. No digas que lo explicarás «paso a paso» ni después, y no acabes con una pregunta: no te puede contestar.
+- Si la pregunta no dice qué no entiende (como «no entiendo nada» o «no lo entiendo»), no expliques la lección: pídele en una frase que pregunte algo concreto y dale un ejemplo de pregunta sobre la LECCIÓN.
+- Si la pregunta no tiene nada que ver con la LECCIÓN (como «¿lloverá mañana?», «¿quién ganó el partido?» o «¿cuántos años tienes?»), contesta solo: AJENA
+- Si la pregunta es sobre el tema de la LECCIÓN pero la respuesta no está en ella, contesta solo: NO_ESTA
 
 LECCIÓN:
 <<<
@@ -430,8 +434,14 @@ def contestar_duda(contenido: dict, pregunta: str) -> str:
     leccion = "\n\n".join(str(contenido.get(k, "")) for k in ("titulo", "lectura_facil", "explicacion_ejemplo"))
     texto = preguntar_ia(PROMPT_DUDA.format(leccion=leccion, pregunta=pregunta), max_tokens=200).strip()
     # Siempre la misma frase, en español: la app la traduce al idioma del niño.
+    if "AJENA" in texto:
+        return AJENA
     if not texto or "NO_ESTA" in texto or texto.lower().startswith("eso no está en esta lección"):
         return NO_ESTA
+    # La IA a veces acaba con «¿Te gustaría saber…?», y el niño no puede contestar: se quita si antes ya ha explicado algo.
+    # shortcut: solo mira el «¿» del español; si las lecciones en otros idiomas también lo hacen, cortar por la última frase.
+    if "¿" in texto and not texto.startswith("¿") and texto.endswith("?"):
+        texto = texto[:texto.rfind("¿")].strip()
     return texto[:600]
 
 
