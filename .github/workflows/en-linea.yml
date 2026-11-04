@@ -21,7 +21,7 @@ jobs:
         working-directory: web
       - name: Publicar en la rama en-linea
         run: |
-          mkdir -p salida/api && cp api/*.py salida/api/ && cp -r web/dist salida/web
+          mkdir salida && cp -r api salida/api && cp -r web/dist salida/web
           cd salida && git init -q -b en-linea && git add -A
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "main ${GITHUB_SHA::7}: $(git -C .. log -1 --format=%s)"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" en-linea
