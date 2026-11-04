@@ -16,6 +16,7 @@ const porMateria = (lecciones, materiaDe) => {
 const campoPin = { ...campo, fontSize: '26px', letterSpacing: '8px', fontFamily: 'ui-monospace, Menlo, monospace' }
 const pinValido = (pin) => /^\d{4,8}$/.test(pin)
 import PanelClase from './Panel.jsx'
+import Tutor from './Tutor.jsx'
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
@@ -948,13 +949,13 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
 
   const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false) }
 
-  const pestanas = [['leer', 'Leer'], ['ejemplo', 'Ejemplo'], ['escuchar', 'Escuchar'], ['test', 'Test']]
+  const pestanas = [['leer', 'Leer'], ['ejemplo', 'Ejemplo'], ['escuchar', 'Escuchar'], ['test', 'Test'], ['tutor', 'Tutor']]
   return (
     <div style={pagina}>
       <button onClick={onVolver} style={botonVolver}>Volver</button>
       <h1 style={titulo}>{leccion.titulo}</h1>
 
-      <div role="tablist" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '26px' }}>
+      <div role="tablist" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: '8px', marginBottom: '26px' }}>
         {pestanas.map(([clave, texto]) => (
           <button key={clave} role="tab" aria-selected={pestana === clave} onClick={() => setPestana(clave)}
             style={boton(pestana === clave ? COLOR.verde : '#e7e5e4', { color: pestana === clave ? 'white' : '#1c1917', fontSize: '17px', padding: '10px 4px' })}>
@@ -966,6 +967,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
       {pestana === 'leer' && <p style={{ fontSize: '22px', lineHeight: '1.8', whiteSpace: 'pre-line' }}>{lectura_facil}</p>}
       {pestana === 'ejemplo' && <p style={{ ...tarjeta, fontSize: '22px', lineHeight: '1.8', backgroundColor: '#eff6ff', whiteSpace: 'pre-line' }}>{explicacion_ejemplo}</p>}
       {pestana === 'escuchar' && <Escuchar texto={lectura_facil} />}
+      {pestana === 'tutor' && <Tutor contenido={leccion.contenido} />}
 
       {pestana === 'test' && terminado && (
         <div style={{ textAlign: 'center' }}>
