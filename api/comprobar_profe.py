@@ -41,3 +41,18 @@ assert {c["codigo"] for c in api.get("/api/profes/clases", headers=sesion).json(
 assert api.get(f"/api/clases/{vieja}", headers=sesion).status_code == 200
 assert api.post("/api/profes/clases", json={"codigo": vieja, "pin": "1234"}, headers=otro).status_code == 409
 print("Cuentas de profe: todo bien")
+
+# Sin conexión: la lección lleva el id del móvil; si llega dos veces, la IA no la repite ni se duplica.
+leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
+           "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
+llamadas = []
+main.crear_leccion_con_ia = lambda texto: llamadas.append(texto) or dict(leccion)
+lid = "12345678-1234-1234-1234-123456789abc"
+cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
+assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
+assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
+assert len(llamadas) == 1
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": "x"}, headers=sesion).status_code == 400
+clase = api.get(f"/api/clases/{suya}", headers=sesion).json()
+assert [l["contenido"]["titulo"] for l in clase["lecciones"]] == ["Las plantas"]
+print("Lecciones del profe sin conexión: todo bien")

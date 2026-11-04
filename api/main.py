@@ -578,7 +578,7 @@ def ver_clase(codigo: str):
             WHERE m.clase = ? ORDER BY a.nombre COLLATE NOCASE
         """, (clase["codigo"],)).fetchall()
         lecciones = c.execute("""
-            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia
+            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia, contenido
             FROM lecciones WHERE clase = ? ORDER BY fecha DESC
         """, (clase["codigo"],)).fetchall()
         dudas = c.execute("""
@@ -587,7 +587,8 @@ def ver_clase(codigo: str):
             JOIN matriculas m ON m.alumno = d.alumno AND m.clase = l.clase
             WHERE l.clase = ? ORDER BY d.fecha DESC LIMIT 30
         """, (clase["codigo"],)).fetchall()
-    lecciones = [dict(l) for l in lecciones]
+    # Enteras, para que el profe las vea también sin conexión.
+    lecciones = [{**dict(l), "contenido": json.loads(l["contenido"])} for l in lecciones]
     return {
         **dict(clase),
         "alumnos": [dict(a) for a in alumnos],
@@ -827,6 +828,7 @@ def leer_foto(codigo: str, foto: Foto):
 class NuevaLeccion(BaseModel):
     texto: str
     materia: str = ""
+    id: str | None = None  # la pone el móvil del profe: si la envía dos veces (sin conexión), no se duplica
 
 
 @app.post("/api/clases/{codigo}/lecciones", dependencies=SOLO_PROFE)
@@ -834,10 +836,15 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
     texto = datos.texto.strip()
     if len(texto) < 40:
         raise HTTPException(400, "Hace falta más texto para preparar una lección.")
+    if datos.id is not None and not re.fullmatch(r"[0-9a-f-]{36}", datos.id):
+        raise HTTPException(400, "Id de lección no válido.")
     with closing(db()) as c:
         clase = buscar_clase(c, codigo)
+        hecha = datos.id and c.execute("SELECT contenido FROM lecciones WHERE id = ? AND clase = ?", (datos.id, clase["codigo"])).fetchone()
+    if hecha:
+        return {"id": datos.id, "leccion": json.loads(hecha["contenido"])}
     leccion = crear_leccion_con_ia(texto[:8000])
-    leccion_id = str(uuid.uuid4())
+    leccion_id = datos.id or str(uuid.uuid4())
     with closing(db()) as c, c:
         leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
         c.execute(

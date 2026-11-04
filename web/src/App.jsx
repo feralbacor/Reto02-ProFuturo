@@ -64,6 +64,59 @@ function App() {
 }
 
 // ---------- Profe ----------
+// Sin conexión el profe ve lo último que descargó y puede dejar lecciones «por preparar» (fotos y texto)
+// en «profe-pendientes». Al volver la conexión se leen las fotos, la IA prepara cada una y quedan como borrador.
+const leerPendientesProfe = () => leer('profe-pendientes', [])
+function guardarPendientesProfe(lista) {
+  guardar('profe-pendientes', lista)
+  window.dispatchEvent(new Event('profe-pendientes'))
+  return JSON.stringify(leerPendientesProfe()) === JSON.stringify(lista) // false: no cabe en el aparato
+}
+const cambiarPendienteProfe = (item) => guardarPendientesProfe(leerPendientesProfe().map(p => p.id === item.id ? item : p))
+
+function usePendientesProfe() {
+  const [lista, setLista] = useState(leerPendientesProfe)
+  useEffect(() => {
+    const ver = () => setLista(leerPendientesProfe())
+    window.addEventListener('profe-pendientes', ver)
+    return () => window.removeEventListener('profe-pendientes', ver)
+  }, [])
+  return lista
+}
+
+// Errores que se arreglan solos (sin red, IA apagada u ocupada): se vuelve a probar más tarde.
+const esPasajero = (e) => e.message === SIN_CONEXION || !e.estado || e.estado >= 500 || e.estado === 429
+
+// Lee las fotos que falten y prepara la lección. Tras cada foto llama a alAvanzar con lo que lleva, para no repetirla.
+async function prepararLeccion(item, alAvanzar) {
+  while (item.fotos.length) {
+    const r = await api(`/api/clases/${encodeURIComponent(item.codigo)}/leer-foto`, { method: 'POST', body: { imagen: item.fotos[0] } })
+    item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
+    alAvanzar(item)
+  }
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, id: item.id } })
+}
+
+let preparandoPendientes = false
+async function prepararPendientesProfe() {
+  if (preparandoPendientes) return
+  preparandoPendientes = true
+  try {
+    for (const item of leerPendientesProfe().filter(p => !p.error)) {
+      try {
+        await prepararLeccion(item, cambiarPendienteProfe)
+        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
+      } catch (e) {
+        if (esPasajero(e)) break
+        const ahora = leerPendientesProfe().find(p => p.id === item.id)
+        if (ahora) cambiarPendienteProfe({ ...ahora, error: e.message }) // p. ej. una foto sin texto: lo arregla el profe
+      }
+    }
+  } finally {
+    preparandoPendientes = false
+  }
+}
+
 function VistaProfe({ onVolver }) {
   // El profe sigue dentro en este aparato hasta que pulsa «Salir» (así abre sus clases también sin conexión).
   const [sesion, setSesion] = useState(() => leer('profe-sesion', null))
@@ -74,6 +127,14 @@ function VistaProfe({ onVolver }) {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
   }, [])
+
+  useEffect(() => {
+    if (!sesion) return undefined
+    prepararPendientesProfe()
+    window.addEventListener('online', prepararPendientesProfe)
+    const t = setInterval(prepararPendientesProfe, 30000)
+    return () => { window.removeEventListener('online', prepararPendientesProfe); clearInterval(t) }
+  }, [sesion])
 
   const abrirClase = (c) => { setCodigo(c); setPantalla('clase') }
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
@@ -150,7 +211,7 @@ function ProfeEntrar({ onEntrar, onVolver }) {
 }
 
 function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
-  const [clases, setClases] = useState(null)
+  const [clases, setClases] = useState(() => leer('profe-clases', null)) // la copia de la última vez, al momento
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
   const [pin, setPin] = useState('')
@@ -158,12 +219,14 @@ function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
   const [creando, setCreando] = useState(false)
 
   useEffect(() => {
-    api('/api/profes/clases').then(setClases).catch(e => {
+    api('/api/profes/clases').then(c => { setClases(c); guardar('profe-clases', c) }).catch(e => {
       if (e.estado === 401) return onSalir() // ha cambiado la contraseña en otro aparato
-      setError(e.message)
-      setClases([])
+      setError(esPasajero(e) ? 'Sin conexión: ves tus clases como estaban la última vez.' : e.message)
+      setClases(c => c || [])
     })
   }, [onSalir])
+
+  const pendientes = usePendientesProfe()
 
   const crear = async (ev) => {
     ev.preventDefault()
@@ -212,6 +275,7 @@ function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
                 <span className="fila-detalle">
                   <span className="insignia" style={{ fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>{c.codigo}</span>
                   {plural(c.alumnos, 'alumno', 'alumnos')} · {plural(c.lecciones, 'lección', 'lecciones')}
+                  {pendientes.some(p => p.codigo === c.codigo) && ` · ${plural(pendientes.filter(p => p.codigo === c.codigo).length, 'por preparar', 'por preparar')}`}
                 </span>
               </span>
               <Icono nombre="seguir" className="icono-final" />
@@ -254,19 +318,18 @@ function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
 }
 
 function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
-  const [clase, setClase] = useState(null)
+  const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
   const [error, setError] = useState('')
-  const [abriendo, setAbriendo] = useState(false)
   const [pidePin, setPidePin] = useState(false)
   const [pin, setPin] = useState('')
   const [intentado, setIntentado] = useState(false)
 
   const cargar = useCallback(() => {
     api(`/api/clases/${encodeURIComponent(codigo)}`)
-      .then(c => { setClase(c); setError(''); setPidePin(false) })
+      .then(c => { setClase(c); setError(''); setPidePin(false); guardar(`profe-clase:${c.codigo}`, c) })
       .catch(e => {
         if (e.estado === 401 || e.estado === 429) { setClase(null); setPidePin(true) }
-        setError(e.message)
+        setError(!esPasajero(e) ? e.message : 'Sin conexión: ves la clase como estaba la última vez. Las lecciones nuevas se prepararán al volver la conexión.')
       })
   }, [codigo])
 
@@ -311,14 +374,12 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
     }
   }
 
-  const abrirLeccion = async (id) => {
-    setAbriendo(true)
-    try {
-      const l = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${id}`)
-      onEditar({ id: l.id, leccion: l.contenido, publicada: l.publicada })
-    } catch (e) {
-      setError(e.message)
-      setAbriendo(false)
+  const pendientes = usePendientesProfe().filter(p => p.codigo === codigo)
+  // La lección entera ya viene con la clase: se abre también sin conexión.
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada })
+  const quitarPendiente = (p) => {
+    if (window.confirm('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.')) {
+      guardarPendientesProfe(leerPendientesProfe().filter(x => x.id !== p.id))
     }
   }
 
@@ -367,6 +428,23 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
         <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />Ver notas</button>
       </div>
 
+      {pendientes.length > 0 && (
+        <section className="seccion">
+          <h2 className="seccion-titulo">Por preparar ({pendientes.length})</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Se prepararán solas cuando haya conexión con el ordenador de la clase. Después las revisas y las publicas.</p>
+          <div className="lista">
+            {pendientes.map(p => (
+              <div key={p.id} className="tarjeta">
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto', 'fotos') : 'texto'}</p>
+                <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || 'Sin texto todavía'}</p>
+                {p.error && <Aviso texto={`No se ha podido preparar: ${p.error}`} />}
+                <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Quitar</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="seccion">
         <h2 className="seccion-titulo">Lecciones</h2>
         {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.</p>}
@@ -375,7 +453,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
             <h3 className="subtitulo">{materia}</h3>
             <div className="lista">
               {lecciones.map(l => (
-                <button key={l.id} disabled={abriendo} onClick={() => abrirLeccion(l.id)} className="fila">
+                <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
                   <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
                   <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? 'Publicada' : 'Borrador'}</span>
                   <Icono nombre="seguir" className="icono-final" />
@@ -445,8 +523,8 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   useEffect(() => {
     // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
     api(`/api/clases/${encodeURIComponent(codigo)}`)
+      .catch(() => leer(`profe-clase:${codigo}`, { materias: [] })) // sin conexión, las de la última vez
       .then(c => { setMaterias(c.materias); setMateria(m => m || c.materias[0] || '') })
-      .catch(() => {})
     api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
   }, [codigo])
 
@@ -489,17 +567,32 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado('Preparando la lección… Tarda alrededor de un minuto.')
+    setOcupado(fotos.length ? 'Leyendo las fotos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
+    let item = { id: nuevoId(), codigo, texto, materia, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
     try {
-      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones`, { method: 'POST', body: { texto, materia } })
+      const r = await prepararLeccion(item, (i) => { item = i })
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
-      setError(e.message)
-      setOcupado('')
+      if (!esPasajero(e)) {
+        setTexto(item.texto) // lo que se haya leído de las fotos no se pierde
+        setFotos(f => f.slice(f.length - item.fotos.length))
+        setError(e.message)
+        setOcupado('')
+        return
+      }
+      // Sin conexión (o la IA apagada): se guarda en el aparato y se prepara sola más tarde.
+      if (!guardarPendientesProfe([...leerPendientesProfe(), item])) {
+        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
+        setError('No cabe en este aparato. Quita alguna foto o escribe el texto.')
+        setOcupado('')
+        return
+      }
+      window.alert('Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.')
+      onVolver()
     }
   }
 
-  const suficiente = texto.trim().length >= 40
+  const suficiente = texto.trim().length >= 40 || fotos.length > 0
   const espera = ocupado && <Cargando texto={ocupado} />
 
   return (
