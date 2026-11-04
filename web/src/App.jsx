@@ -5,7 +5,10 @@ import {
   COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
-import { useBuscar, useAyudante, descargar } from './tutorAyudante.js'
+import { buscar } from './tutorBuscar.js'
+
+// shortcut: libera los 150 MB del ayudante que se probó y se quitó (rama tutor-offline); se puede borrar cuando ningún móvil lo tenga.
+try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('ayudante') } catch { /* sin almacenamiento */ }
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
@@ -1124,7 +1127,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
   const pregunta = preguntas[n]
   const acierto = elegida === pregunta.correcta
   // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
-  const pista = useBuscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
+  const pista = buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
@@ -1301,28 +1304,13 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar, onQuitar }) {
           </form>
         )
         : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />Tengo una duda</button>}
-      <Ayudante sinConexion={sinConexion} />
     </section>
-  )
-}
-
-// Opcional: el ayudante entiende la duda aunque no use las palabras de la lección. Se descarga una vez y va sin red.
-function Ayudante({ sinConexion }) {
-  const { estado, progreso } = useAyudante()
-  if (estado === 'listo') return <p className="nota" style={{ marginTop: 14 }}>Ayudante descargado: busca en la lección aunque uses otras palabras, también sin conexión.</p>
-  if (estado === 'descargando') return <p className="nota" style={{ marginTop: 14 }} role="status">Descargando el ayudante… {progreso} %</p>
-  return (
-    <div style={{ marginTop: 18 }}>
-      <p className="nota">{estado === 'error' ? 'No se ha podido descargar el ayudante. Prueba otra vez con conexión.'
-        : '¿Quieres que Mochila busque mejor tus dudas en la lección? Descarga el ayudante una vez y funcionará sin conexión. Mejor con wifi.'}</p>
-      <button onClick={descargar} disabled={sinConexion} className="boton boton-fantasma boton-ancho">Descargar ayudante (150 MB)</button>
-    </div>
   )
 }
 
 // Mientras no llega la respuesta de la IA de la clase, el móvil busca en la lección, sin internet.
 function EnLaLeccion({ contenido, pregunta, nota }) {
-  const trozos = useBuscar(contenido, pregunta)
+  const trozos = buscar(contenido, pregunta)
   return (
     <>
       {trozos.length > 0 && <p className="nota" style={{ marginTop: 10 }}>Mientras tanto, esto dice la lección:</p>}
