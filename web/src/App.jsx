@@ -65,9 +65,15 @@ function App() {
 
 // ---------- Profe ----------
 function VistaProfe({ onVolver }) {
+  // El profe sigue dentro en este aparato hasta que pulsa «Salir» (así abre sus clases también sin conexión).
+  const [sesion, setSesion] = useState(() => leer('profe-sesion', null))
   const [pantalla, setPantalla] = useState('clases')
   const [codigo, setCodigo] = useState(null)
   const [editando, setEditando] = useState(null) // { id, leccion, publicada }
+  const salir = useCallback(() => {
+    try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
+    setSesion(null)
+  }, [])
 
   const abrirClase = (c) => { setCodigo(c); setPantalla('clase') }
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
@@ -84,27 +90,87 @@ function VistaProfe({ onVolver }) {
   if (pantalla === 'revisar' && editando) {
     return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
   }
-  return <ProfeClases onAbrir={abrirClase} onVolver={onVolver} />
+  if (!sesion) return <ProfeEntrar onEntrar={(s) => { guardar('profe-sesion', s); setSesion(s) }} onVolver={onVolver} />
+  return <ProfeClases profe={sesion} onAbrir={abrirClase} onVolver={onVolver} onSalir={salir} />
 }
 
-function ProfeClases({ onAbrir, onVolver }) {
+function ProfeEntrar({ onEntrar, onVolver }) {
+  const [nueva, setNueva] = useState(false)
+  const [nombre, setNombre] = useState('')
+  const [usuario, setUsuario] = useState('')
+  const [contrasena, setContrasena] = useState('')
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  const enviar = async (ev) => {
+    ev.preventDefault()
+    setError('')
+    setEnviando(true)
+    try {
+      onEntrar(await api(nueva ? '/api/profes' : '/api/profes/entrar', { method: 'POST', body: { nombre, usuario, contrasena } }))
+    } catch (e) {
+      setError(e.message === SIN_CONEXION ? 'Para entrar la primera vez hace falta conexión con el ordenador de la clase.' : e.message)
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} /></header>
+      <h1 className="titulo">{nueva ? 'Crear mi cuenta de profe' : 'Entrar como profe'}</h1>
+      <p className="frase">{nueva ? 'Con tu cuenta verás todas tus clases en cualquier móvil o tablet.' : 'Escribe tu usuario y tu contraseña para ver tus clases.'}</p>
+      <form onSubmit={enviar} className="formulario" style={{ marginTop: 24 }}>
+        {nueva && (
+          <div className="campo-grupo">
+            <label htmlFor="profe-nombre" className="etiqueta">Tu nombre</label>
+            <input id="profe-nombre" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} autoComplete="name" />
+          </div>
+        )}
+        <div className="campo-grupo">
+          <label htmlFor="profe-usuario" className="etiqueta">Usuario</label>
+          <input id="profe-usuario" className="campo" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
+            autoCapitalize="off" autoComplete="username" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
+          {nueva && <p className="pista">Solo letras y números, sin espacios.</p>}
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="profe-contrasena" className="etiqueta">Contraseña</label>
+          <CampoContrasena id="profe-contrasena" valor={contrasena} onCambio={setContrasena} nueva={nueva} />
+          {nueva && <p className="pista">Al menos 4 letras o números.</p>}
+        </div>
+        <Aviso texto={error} />
+        <button type="submit" disabled={enviando || (nueva && !nombre.trim()) || !usuarioValido(usuario) || contrasena.length < 4} className="boton boton-principal boton-ancho boton-grande">
+          {enviando ? 'Un momento…' : nueva ? 'Crear y entrar' : 'Entrar'}
+        </button>
+      </form>
+      <button onClick={() => { setNueva(!nueva); setError('') }} className="boton boton-secundario boton-ancho" style={{ marginTop: 16 }}>
+        {nueva ? 'Ya tengo cuenta' : 'Crear mi cuenta de profe'}
+      </button>
+    </div>
+  )
+}
+
+function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
   const [clases, setClases] = useState(null)
   const [nombre, setNombre] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [creando, setCreando] = useState(false)
 
   useEffect(() => {
-    api('/api/clases').then(setClases).catch(e => { setError(e.message); setClases([]) })
-  }, [])
+    api('/api/profes/clases').then(setClases).catch(e => {
+      if (e.estado === 401) return onSalir() // ha cambiado la contraseña en otro aparato
+      setError(e.message)
+      setClases([])
+    })
+  }, [onSalir])
 
   const crear = async (ev) => {
     ev.preventDefault()
     setError('')
     setCreando(true)
     try {
-      const clase = await api('/api/clases', { method: 'POST', body: { nombre, pin } })
-      guardarPin(clase.codigo, pin)
+      const clase = await api('/api/clases', { method: 'POST', body: { nombre } })
       onAbrir(clase.codigo)
     } catch (e) {
       setError(e.message)
@@ -112,12 +178,28 @@ function ProfeClases({ onAbrir, onVolver }) {
     }
   }
 
+  // Las clases de antes de las cuentas tienen PIN: con él pasan a ser tuyas.
+  const traer = async (ev) => {
+    ev.preventDefault()
+    setError('')
+    try {
+      const clase = await api('/api/profes/clases', { method: 'POST', body: { codigo: limpiarCodigo(codigo), pin } })
+      guardarPin(clase.codigo, pin)
+      onAbrir(clase.codigo)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const hay = clases?.length > 0
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver} /></header>
-      <h1 className="titulo">Mis clases</h1>
-      <p className="frase">Cada clase tiene un código. Tus alumnos lo escriben para entrar.</p>
+      <header className="cabecera">
+        <Volver onClick={onVolver} />
+        <button onClick={onSalir} className="boton boton-fantasma boton-pequeno"><Icono nombre="salir" />Salir</button>
+      </header>
+      <h1 className="titulo">Hola, {profe.nombre}</h1>
+      <p className="frase">Estas son tus clases. Cada una tiene un código: tus alumnos lo escriben para entrar.</p>
 
       <Aviso texto={error} />
       {clases === null && <Cargando texto="Cargando tus clases…" />}
@@ -145,17 +227,28 @@ function ProfeClases({ onAbrir, onVolver }) {
             <label htmlFor="nombre-clase" className="etiqueta">Nombre de la clase</label>
             <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder="Por ejemplo: 5.º A · Ciencias" />
           </div>
-          <div className="campo-grupo">
-            <label htmlFor="pin-clase" className="etiqueta">Tu PIN de profe</label>
-            <input id="pin-clase" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8}
-              value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
-            <p className="pista">De 4 a 8 números. Apúntalo: en otro móvil o tablet te lo pedirá para abrir la clase.</p>
-          </div>
-          <button type="submit" disabled={!nombre.trim() || !pinValido(pin) || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
+          <button type="submit" disabled={!nombre.trim() || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
             {creando ? 'Creando…' : 'Crear la clase'}
           </button>
         </form>
       </section>
+
+      <details className="seccion">
+        <summary className="seccion-titulo" style={{ cursor: 'pointer' }}>¿Tienes una clase de antes, con PIN?</summary>
+        <form onSubmit={traer} className="tarjeta formulario" style={{ marginTop: 12 }}>
+          <div className="campo-grupo">
+            <label htmlFor="codigo-traer" className="etiqueta">Código de la clase</label>
+            <input id="codigo-traer" className="campo campo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
+              autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
+          </div>
+          <div className="campo-grupo">
+            <label htmlFor="pin-traer" className="etiqueta">El PIN de esa clase</label>
+            <input id="pin-traer" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={8}
+              value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+          </div>
+          <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin)} className="boton boton-secundario boton-ancho">Añadirla a mis clases</button>
+        </form>
+      </details>
     </div>
   )
 }

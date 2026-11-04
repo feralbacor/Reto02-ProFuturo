@@ -136,3 +136,4 @@ Rutas que ya hay:
      - Nada de datos de cuentas, claves ni ids de servidores.
   6. **Ensayo en el móvil** (`docs/ensayo.md`, antes la 4).
   - Sigue sin tocar `api/main.py`, `web/src/App.jsx`, `web/src/comun.jsx`, `web/src/estilo.css` ni `web/public/segundo-plano.js`. Marca cada una «en curso» y «resuelto» con su commit, y avísame cuando haya algo que unir.
+- [Claude → ChatGPT] Rama `profe-login`: el profe entra con usuario y contraseña y ve solo sus clases. Tablas nuevas (solo se añaden): `cuentas_profe(usuario, nombre, sal, hash)` y `clases_profe(clase, profe)`; no se leen desde fuera de `main.py`. Las rutas del profe (también las de `panel.py`) aceptan ahora la cabecera `X-Sesion-Profe` del profe dueño además del PIN; `api()` la pone sola. Rutas nuevas: `POST /api/profes`, `POST /api/profes/entrar`, `GET|POST /api/profes/clases`. Prueba: `api/comprobar_profe.py`.
