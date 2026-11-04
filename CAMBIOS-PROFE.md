@@ -1,4 +1,4 @@
-# Cambios del profe: cuenta, modo sin conexión y título de la lección
+# Cambios del profe: cuenta, modo sin conexión, título y archivos de la lección
 
 Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`. Todavía no está unida a `main`.
 
@@ -9,16 +9,17 @@ Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`.
 | `0184672` | Si la IA está apagada, el aviso lo dice en vez de «Sin conexión» |
 | `daf4540` | El profe puede escribir el título de la lección; si lo deja vacío, lo pone la IA |
 | `be44489` | El título es el paso 1 de «Nueva lección». El profe solo sale de sus clases con «Salir» |
+| `5ae19ea` | «Subir un archivo»: la lección se puede hacer con un PDF, Word, PowerPoint, LibreOffice o texto |
 
 ## Archivos que se modifican
 
 | Archivo | Líneas |
 |---|---|
-| `web/src/App.jsx` | +238 / −40 |
-| `api/main.py` | +137 / −21 |
-| `api/comprobar_profe.py` (nuevo) | +66 |
-| `web/src/comun.jsx` | +4 / −1 |
-| `REPARTO.md` (dos líneas en «Peticiones») | +2 |
+| `web/src/App.jsx` | +275 / −48 |
+| `api/main.py` | +199 / −21 |
+| `api/comprobar_profe.py` (nuevo) | +111 |
+| `web/src/comun.jsx` | +5 / −1 |
+| `REPARTO.md` (tres líneas en «Peticiones») | +3 |
 | `CAMBIOS-PROFE.md` (este archivo) | |
 
 Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo lo de la rama).
@@ -65,17 +66,39 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - Si el profe escribe el título, se usa ese. Si lo deja vacío, se queda el que pone la IA.
 - `POST /api/clases/{codigo}/lecciones` acepta un `titulo` opcional (sin espacios de sobra, como mucho 120 letras).
 
+## 4. Lecciones desde un archivo
+
+**Lo que ve el profe**
+- En el paso 2 («Las fotos o los archivos») hay un botón nuevo, **«Subir un archivo»**, junto a «Hacer una foto» y «Elegir fotos».
+- Vale: **PDF, Word (.docx), PowerPoint (.pptx), LibreOffice (.odt, .odp), texto (.txt, .md, .csv) y HTML**, y también imágenes. Hasta 5 entre fotos y archivos, y como mucho 10 MB cada archivo.
+- Los textos (.txt, .md, .csv) se ponen directamente en el paso 3, también sin conexión.
+- Los demás salen como una tarjeta con su nombre. «Leer el archivo» pone su texto en el paso 3 para revisarlo. Si no se lee antes, se lee al pulsar «Preparar la lección».
+- **Sin conexión**, los archivos esperan en «Por preparar» igual que las fotos, y se leen solos al volver la conexión.
+- Leer un archivo **no necesita la IA**: funciona aunque Ollama esté apagado. La IA solo hace falta para preparar la lección.
+- Si no se puede: «Este archivo no se puede leer…» (por ejemplo un .zip) o «No encuentro texto en el archivo. Si es un PDF escaneado, haz fotos de sus páginas».
+
+**API**
+- Ruta nueva: `POST /api/clases/{codigo}/leer-archivo` con `{archivo}` (en base64) → `{texto}`. Solo el profe, como `leer-foto`.
+- El tipo se sabe por el contenido, no por el nombre. Word, PowerPoint y LibreOffice se abren con `zipfile` (de Python, sin librerías). Del PDF se saca el texto de hasta 40 páginas, con la librería **`pypdf`**.
+- Se devuelven como mucho 20 000 letras (la lección usa las primeras 8 000).
+
+**Web**
+- `App.jsx`: botón, tarjeta del archivo y `leerAdjunto()`, que manda cada cosa a su ruta (las imágenes a `leer-foto` y lo demás a `leer-archivo`).
+- `comun.jsx`: icono `archivo`.
+
 ## Cómo comprobarlo
 
-- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
+- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» y «Leer archivos»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
 - A mano, con la API en marcha y Ollama encendido:
   1. Entra en «Soy profe» y crea una cuenta. Recarga: sigues dentro, sin «Volver». «Salir» te lleva a «Entrar como profe».
   2. Crea una clase y una lección con título: la lección se llama así.
   3. Chrome → DevTools → Network → «Offline». Haz otra lección: sale en «Por preparar».
   4. Quita «Offline»: en unos 30 s aparece como «Borrador».
+  5. En «Nueva lección», «Subir un archivo» con un PDF o un Word y «Leer el archivo»: su texto sale en el paso 3.
 
 ## Ojo
 
 - La API necesita **Python 3.11** (`api/.venv`). Con el Python 3.9 de Xcode no arranca y la web se queda cargando.
+- **Librería nueva: `pypdf`**, solo para los PDF. En cada ordenador que arranque la API: `cd api && source .venv/bin/activate && pip install pypdf`. Sin ella, todo lo demás funciona y al subir un PDF sale «Para leer PDF falta pypdf…».
 - Para leer fotos y preparar lecciones hace falta **Ollama** encendido con `qwen3-vl:4b-instruct`.
 - Sin hacer: guardar cambios de una lección sin conexión, preparar lecciones con la app cerrada y un tiempo máximo de espera si el servidor no contesta.
