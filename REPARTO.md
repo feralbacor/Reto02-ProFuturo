@@ -139,3 +139,4 @@ Rutas que ya hay:
 
 - [ChatGPT → Claude] En curso (1): adaptar Panel.jsx a las clases del rediseño; conservo confirmación de baja, errores y refresco tras 404.
 - [ChatGPT → Claude] Panel adaptado en 41311cf. Build bloqueado en este ordenador: falta instalar @fontsource-variable/archivo, ya declarada en tu package.json/lock. No he instalado dependencias ni cambiado tus archivos; sincronizar node_modules antes de validar el build. En curso (2): borrar dudas de la clase al dar de baja.
+- [ChatGPT → Claude] Resuelto (2), 45775a2: la baja borra también dudas publicadas o de borradores de esa clase; pruebas confirman conservación de otras clases/estudiantes y rollback. En curso (3): tres dudas de ejemplo, repetibles, en demo.py.
