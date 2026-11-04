@@ -178,6 +178,7 @@ function VistaProfe({ onVolver }) {
   const [editando, setEditando] = useState(null) // { id, leccion, publicada, cambio }
   const [porPreparar, setPorPreparar] = useState(null) // la lección «por preparar» que se edita
   const [materiaNueva, setMateriaNueva] = useState('') // la materia en la que se crea la lección
+  const [avisoClase, setAvisoClase] = useState('') // «Publicada…» al volver de revisar una lección
   const salir = useCallback(() => {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
@@ -195,7 +196,7 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={(m) => { setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+    return <ProfeClase codigo={codigo} aviso={avisoClase} onVolver={() => { setAvisoClase(''); setPantalla('clases') }} onNueva={(m) => { setAvisoClase(''); setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
       onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
@@ -205,7 +206,7 @@ function VistaProfe({ onVolver }) {
     return <ProfeNuevaLeccion codigo={codigo} materia={porPreparar?.materia || materiaNueva} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
   }
   if (pantalla === 'revisar' && editando) {
-    return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
+    return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={(aviso = '') => { setAvisoClase(aviso); setPantalla('clase'); window.scrollTo(0, 0) }} />
   }
   if (!sesion) return <ProfeEntrar onEntrar={(s) => { guardar('profe-sesion', s); setSesion(s) }} onVolver={onVolver} />
   return <ProfeClases profe={sesion} onAbrir={abrirClase} onSalir={salir} />
@@ -373,7 +374,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
-function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
+function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
   const [error, setError] = useState('')
   const [pidePin, setPidePin] = useState(false)
@@ -484,6 +485,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       </div>
 
       <Aviso texto={error} />
+      <Aviso texto={aviso} color={COLOR.verde} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
         <button onClick={() => onNueva(clase.nombre)} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
@@ -820,7 +822,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
 function ProfeRevisar({ codigo, inicial, onVolver }) {
   const [leccion, setLeccion] = useState(inicial.leccion)
-  const [publicada, setPublicada] = useState(!!inicial.publicada)
+  const [publicada] = useState(!!inicial.publicada)
   const [guardando, setGuardando] = useState(false)
   const [aviso, setAviso] = useState(() => !inicial.cambio ? { texto: '', color: COLOR.verde }
     : inicial.cambio.error ? { texto: `No se han podido guardar tus cambios: ${inicial.cambio.error}`, color: COLOR.rojo }
@@ -842,18 +844,13 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
       // Un cambio viejo de esta lección que esperaba en el aparato ya no vale: lo de ahora es lo último.
       if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
-      if (publicar) setPublicada(true)
-      setAviso({
-        texto: publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'),
-        color: COLOR.verde,
-      })
+      onVolver(publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'))
     } catch (e) {
       // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
       if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
       if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
       if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
-      if (publicar) setPublicada(true)
-      setAviso({ texto: 'Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.', color: COLOR.verde })
+      onVolver(t('Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.'))
     } finally {
       setGuardando(false)
     }
@@ -866,7 +863,7 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={onVolver}>{t('La clase')}</Volver>
+        <Volver onClick={() => onVolver()}>{t('La clase')}</Volver>
         {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
       <h1 className="titulo">{publicada ? t('Lección publicada') : t('Revisa la lección')}</h1>

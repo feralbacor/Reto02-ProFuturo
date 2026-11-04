@@ -100,6 +100,8 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - Sin red se comprueba lo mismo que en la API: que no falte ningún texto y que no haya dos opciones ni dos preguntas iguales.
 - Si al enviarlo el servidor lo rechaza, la etiqueta pasa a «Error al guardar». Al abrir la lección se ve el porqué, y al guardarla otra vez se reintenta.
 
+- Al pulsar «Guardar los cambios» o «Publicar», vuelve sola a la clase, con el aviso («Publicada…», «Guardado.» o «Sin conexión: guardado en este aparato…») arriba.
+
 **«Por preparar» (las que esperan conexión o la IA)**
 - Cada una tiene ahora **«Editar»**, además de «Quitar». Abre «Lección por preparar» con su título, fotos y archivos, texto y materia, para cambiarlos.
 - Al pulsar «Preparar la lección» se sustituye la que había: no se duplica, porque guarda el mismo id. Si hay red y la IA está encendida, se prepara en ese momento.
