@@ -6,13 +6,13 @@
 - **Alumno / segunda persona:** móvil con la aplicación instalada o abierta, una voz local probada y la lección descargada.
 - **Antes del evento:** una persona comprueba el recorrido completo en ambos aparatos.
 
-Este guion incorpora el flujo comunicado por Claude. Su código nuevo todavía no está en esta copia: los pasos de PIN, materias y sincronización deberán ensayarse al integrarlo. Los textos entre «comillas» son los facilitados por el equipo o los presentes en la interfaz revisada. No se inventa un texto para el botón que confirma el PIN: comprobar su rótulo al integrar.
+Este guion incorpora main (6163d10), con PIN, materias, cuentas de alumno y sincronización en segundo plano. Falta ensayar el recorrido completo en el portátil y el móvil. Los textos entre «comillas» son los facilitados por el equipo o los presentes en la interfaz revisada. No se inventa un texto para el botón que confirma el PIN: comprobar su rótulo al integrar.
 
 ## Preparar antes de presentar
 
 1. Tener una clase accesible al profe y una lección **ya publicada y descargada en el móvil**. Usar esa misma lección en el recorrido principal y como plan B. Elegir cinco preguntas que ambos demostradores conozcan.
 2. Preparar el PIN del docente (4 a 8 números) y anotar por separado el código de alumno generado (6 letras). No compartir el PIN con el alumnado.
-3. **AULA23 es el código fijo de la clase de datos ficticios**, no un ejemplo de seis letras generadas. Contiene seis alumnos y dos lecciones. El PIN de demostración previsto es 1234, pero solo se podrá anunciar como operativo después de integrar el nuevo main y adaptar demo.py. Actualmente esa clase antigua puede estar abierta.
+3. **AULA23 es el código fijo de la clase de datos ficticios**, no un ejemplo de seis letras generadas. Contiene seis alumnos y dos lecciones. El script adaptado crea el PIN 1234 y las cuentas aula23ana, aula23bruno, aula23carla, aula23diego, aula23elena y aula23farid con contraseña inicial 1234. Conserva las credenciales existentes y añade un sufijo si un usuario está ocupado. Consultar [demo.md](demo.md) para el acceso.
 4. Descargar previamente el modelo local qwen3-vl:4b (unos 3,3 GB). Comprobar que se ejecuta en el portátil del aula y que no depende del túnel a una GPU remota. La creación de material necesita ese ordenador encendido; el alumno puede usar el material descargado sin él.
 5. Conectar portátil y móvil a la misma wifi local. Para demostrar que no se usa Internet, retirar la salida a Internet manteniendo esa red local, después de haber preparado la aplicación y el modelo.
 6. Para el service worker y la reapertura offline en el móvil, preparar un origen HTTPS de confianza y una versión compilada. Una dirección `http://IP-del-portátil` no basta. Un túnel público HTTPS sirve para otros ensayos, pero depende de Internet y no demuestra que los datos permanezcan en el aula. Acordar con Claude la configuración local del evento.
@@ -28,7 +28,7 @@ Preparar de antemano la clase, el perfil del alumno y la lección publicada. Res
 | Paso | Quién y dónde | Acción y texto de interfaz | Qué decir y qué comprobar |
 | --- | --- | --- | --- |
 | 1 | Profe, portátil | «Soy profe» → abrir la clase preparada. Introducir el PIN si se solicita. | «Esta clase está protegida para el docente. El alumno utiliza otro código.» Comprobar que se abre. |
-| 2 | Alumno, móvil | «Soy alumno» → abrir la clase ya preparada y una lección de su materia. | «El material ya está descargado y organizado por materia.» Si se muestra el alta en una demo ampliada, escribir nombre y código y pulsar «Entrar». |
+| 2 | Alumno, móvil | «Soy alumno» → «¿Quién eres?» → elegir un perfil preparado, escribir su contraseña y pulsar «Entrar». Abrir la clase y una lección de su materia. | «El material ya está descargado y organizado por materia.» Para mostrar un alta nueva, usar «Crear mi usuario» y «Crear y entrar», como en el recorrido ampliado. |
 | 3 | Alumno, móvil | Abrir «Leer» y «Ejemplo». Mostrar «Escuchar» y, solo si se ha ensayado la voz local, «▶ Escuchar». | «Tenemos una lectura sencilla, un ejemplo y la posibilidad de escucharla.» Detener el audio antes de continuar. |
 | 4 | Alumno, móvil | Activar modo avión y comprobar que también están apagados wifi y datos móviles. Volver a la lección. | «Ahora el móvil no tiene conexión. El material sigue aquí.» La barra debe mostrar «Sin conexión · N respuestas por enviar», con el número real. |
 | 5 | Alumno, móvil | Entrar en «Test», elegir una opción y pulsar «Responder». Continuar con «Siguiente» y, en la quinta pregunta, «Ver resultado». Estos rótulos están verificados en la interfaz local; contrastarlos al integrar la versión nueva. | «La corrección ocurre en el móvil y las respuestas se guardan para enviarlas después.» Con un perfil sin pendientes y un test de cinco preguntas, comprobar cinco respuestas pendientes. |
@@ -44,7 +44,7 @@ Esta parte se puede mostrar después del pitch. La generación requiere aproxima
 | Paso | Quién y dónde | Acción y botones | Qué decir y qué comprobar |
 | --- | --- | --- | --- |
 | 1 | Profe, portátil | «Soy profe». Escribir nombre de clase y PIN de 4 a 8 números; pulsar «Crear clase». | «El PIN protege el acceso del docente desde otro aparato. El código de seis letras permite entrar al alumnado.» Anotar el código generado. |
-| 2 | Alumno, móvil | «Soy alumno». Escribir su nombre y el código; pulsar «Entrar». | «No pedimos email ni apellidos.» No escribir el PIN del docente aquí. |
+| 2 | Alumno, móvil | «Soy alumno» → «¿Quién eres?» → «Crear mi usuario». Escribir nombre, usuario, contraseña de al menos cuatro caracteres y código de la clase; pulsar «Crear y entrar». | «Cada alumno tiene su usuario y contraseña; no pedimos email ni apellidos.» No escribir el PIN del docente como código de alumno. |
 | 3 | Profe, portátil | «+ Nueva lección». Completar «Materia», usando una sugerencia si encaja. | «La materia organiza lo que verá el alumno.» Si falta en datos antiguos, se presenta como «General». |
 | 4 | Profe, portátil | «📷 Hacer foto» si hay cámara adecuada, o «🖼️ Elegir fotos» para una imagen preparada. Se admiten hasta cinco. | «Podemos partir del libro que ya utiliza el aula. Reducimos las fotos antes de enviarlas al ordenador local.» |
 | 5 | Profe, portátil | Con una foto seleccionada, «Leer la foto». | «La IA transcribe la página en el ordenador del aula.» Con varias fotos el rótulo puede cambiar; la demostración usa una para conservar este texto exacto. |
@@ -89,9 +89,9 @@ npm run preview -- --host 127.0.0.1 --port 4173
 
 Abrir http://localhost:4173 y mantener la API en el puerto 8000. En esta versión, preview hereda el proxy de `/api`. Esto no configura por sí solo el acceso HTTPS del móvil: prepararlo con Claude antes del evento.
 
-Al llegar el nuevo código de main: revisar «Peticiones» de REPARTO.md, hacer `git merge origin/main` desde `chatgpt` y adaptar demo.py después. El PIN 1234 debe guardarse **solo si AULA23 no tiene fila en pines_profe**, usando `main.guardar_pin`; no regenerar la sal al repetir la carga. Nombrar las columnas de los INSERT. Esta actualización no forma parte del cambio actual, limitado a docs/.
+El nuevo main ya está integrado. demo.py nombra las columnas de los INSERT, crea el PIN solo si falta y añade las cuentas de ejemplo solo si el alumno no tiene ya una. Usa las funciones de main para guardar las credenciales; repetir la carga no regenera sus sales ni restablece las contraseñas.
 
-Después de adaptar el script, ejecutar desde la raíz:
+Ejecutar desde la raíz:
 
 ```sh
 api/.venv/bin/python api/demo.py --comprobar
@@ -100,3 +100,16 @@ api/.venv/bin/python docs/comprobar_panel.py
 ```
 
 Ensayar también que una petición sin autorización al panel devuelve 401 y que el panel abre desde una clase autorizada. Según la integración comunicada, main incluye su router con `dependencies=SOLO_PROFE`, y `api()` añade `X-Pin-Profe` desde `pines-profe`. El panel conserva `{codigo}` en su ruta y utiliza `api()`. Las clases antiguas sin PIN siguen abiertas hasta que se les asigne uno.
+
+## Ensayo adicional · dos alumnos, un mismo móvil
+
+1. Con conexión al aula, entrar con el primer alumno y descargar sus lecciones. Pulsar «Salir».
+2. En «¿Quién eres?», pulsar «Ya tengo usuario», entrar con el segundo alumno y descargar también su contenido. Pulsar «Salir».
+3. Desconectar wifi y datos. Elegir el perfil del primer alumno, escribir su contraseña y pulsar «Entrar». Leer y responder; comprobar su nombre y que no aparece el perfil del compañero.
+4. Pulsar «Salir» y repetir con el segundo perfil, todavía sin conexión. El acceso offline requiere que esa cuenta y su contenido ya se hayan guardado en ese aparato.
+5. Reconectar. Esperar «Todo enviado ✓» y comprobar en «Ver notas» las filas de ambos alumnos. Crear una cuenta por primera vez requiere conexión al aula.
+6. Si se quiere mostrar recuperación de acceso, hacerlo conectado y al final: «Nueva contraseña» junto al alumno en la vista del profe. Probar el nuevo acceso con red; no presentar el cambio como revocación inmediata de una copia offline.
+
+## Sincronización en segundo plano
+
+Se conservan `web/public/segundo-plano.js` y `workbox.importScripts` en `web/vite.config.js`. El service worker puede sincronizar pendientes y buscar novedades cuando el navegador admita esas capacidades y le permita ejecutarse. No prometer un plazo fijo con la app cerrada ni soporte universal. En navegadores sin soporte se usa la sincronización con la página abierta; mantenerla abierta para el recorrido principal.

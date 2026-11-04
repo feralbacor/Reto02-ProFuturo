@@ -10,7 +10,7 @@ Mochila responde a ese problema: permite preparar una clase, llevarla en el disp
 
 ## 0:25–0:55 · Solución
 
-El docente crea una clase con nombre y PIN. El alumnado entra con su nombre y un código, sin email ni apellidos.
+El docente crea una clase con nombre y PIN. El alumnado crea usuario y contraseña con el código de clase, sin email ni apellidos. Puede compartir móvil y cambiar de perfil al salir.
 
 Para preparar una lección, el profesor elige la materia y fotografía una página de su libro. Mochila lee la foto; el docente revisa el texto y genera una lectura sencilla, un ejemplo y un test. Revisa el resultado y lo publica. La IA ayuda a preparar material; el profesor conserva la decisión educativa.
 
@@ -46,7 +46,7 @@ Queremos que perder la conexión deje de significar perder la clase.
 
 Notas de ensayo, fuera del discurso:
 
-- El flujo nuevo, las medidas de OCR, el tamaño del modelo y los tiempos proceden del equipo; falta contrastarlos con su nueva versión integrada en este ordenador.
+- El flujo de usuarios y sincronización está integrado desde main (6163d10). Las medidas de OCR, el tamaño del modelo y los tiempos proceden del equipo; falta repetir el ensayo completo en este ordenador y el móvil.
 - Para encajar los tres minutos, partir de una lección publicada. La creación completa con IA se demuestra después: la generación tarda unos 45 segundos en el equipo probado, además de la lectura y la revisión.
 - «Escuchar» sin Internet requiere una voz local instalada. Ensayar en el móvil concreto.
 - La afirmación de permanencia en el aula corresponde al despliegue local: sin túneles externos ni GPU remota durante la demostración.

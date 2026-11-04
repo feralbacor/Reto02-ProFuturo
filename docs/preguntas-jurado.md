@@ -1,6 +1,6 @@
 # Mochila · Preguntas del jurado
 
-Respuestas para el flujo comunicado por el equipo. Las novedades de Claude deben comprobarse en la versión integrada antes de la presentación. Las cifras son mediciones aportadas por el equipo, no resultados repetidos en este ordenador.
+Respuestas para el flujo comunicado por el equipo. Las novedades están integradas desde main (6163d10); queda el ensayo completo en dispositivos antes de presentar. Las cifras son mediciones aportadas por el equipo, no resultados repetidos en este ordenador.
 
 ## ¿Cómo puede funcionar si no hay Internet?
 
@@ -40,7 +40,7 @@ Se reintentan las respuestas pendientes. Cada respuesta tiene un identificador �
 
 ## ¿Y si dos móviles envían lo mismo?
 
-Si envían el mismo registro con el mismo identificador, se guarda una sola vez. Dos respuestas creadas por separado tendrán identificadores diferentes y se conservan como respuestas distintas; el panel toma la última de cada pregunta para un mismo alumno. Es importante distinguir eso de reconocer a una misma persona en dos dispositivos: compartir nombre no garantiza compartir identidad, y ese caso necesita una política explícita.
+Si envían el mismo registro con el mismo identificador, se guarda una sola vez. Dos respuestas creadas por separado tendrán identificadores diferentes y se conservan como respuestas distintas; el panel toma la última de cada pregunta para un mismo alumno. Al entrar con el mismo usuario y contraseña se recupera el mismo identificador de alumno. Crear otro usuario con el mismo nombre crea otra identidad: el nombre por sí solo no une cuentas.
 
 ## ¿Cómo decidís cuál es la última respuesta?
 
@@ -81,3 +81,15 @@ Los resultados ya sincronizados permanecen en el ordenador del aula. Las respues
 ## ¿Cómo demostraréis impacto educativo?
 
 Con un piloto junto a docentes: medir continuidad durante los cortes, actividades completadas, tiempo de preparación, calidad de contenidos y evolución del aprendizaje. El prototipo demuestra un recorrido técnico; todavía no demuestra una mejora educativa cuantificada.
+
+## ¿Pueden varios niños compartir el móvil?
+
+Sí. Cada alumno tiene usuario y contraseña. «Salir» devuelve a «¿Quién eres?» para elegir otra cuenta. Para entrar sin conexión, esa cuenta debe haber entrado antes en ese móvil y tener el material descargado. Crear una cuenta nueva o entrar por primera vez desde otro aparato requiere conexión con el aula.
+
+## ¿Qué pasa si un alumno olvida su contraseña?
+
+El docente, dentro de su clase protegida por PIN, utiliza «Nueva contraseña». Se necesita conexión con el ordenador del aula para guardar el cambio. Un móvil desconectado conserva una comprobación local de la contraseña anterior; no prometemos revocación inmediata mientras permanezca offline.
+
+## ¿Sincroniza con la aplicación cerrada?
+
+La nueva versión incluye un service worker con sincronización en segundo plano y periódica. Se aprovecha donde el navegador lo admite y concede tiempo de ejecución; no funciona igual en todos los dispositivos ni garantiza un intervalo exacto con la app cerrada. La sincronización con la página abierta sigue siendo la vía de respaldo.
