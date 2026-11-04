@@ -1,4 +1,4 @@
-# Cambios del profe: cuenta, modo sin conexión, título y archivos de la lección
+# Cambios del profe: cuenta, modo sin conexión, título, archivos y edición de lecciones
 
 Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`. Todavía no está unida a `main`.
 
@@ -10,12 +10,13 @@ Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`.
 | `daf4540` | El profe puede escribir el título de la lección; si lo deja vacío, lo pone la IA |
 | `be44489` | El título es el paso 1 de «Nueva lección». El profe solo sale de sus clases con «Salir» |
 | `5ae19ea` | «Subir un archivo»: la lección se puede hacer con un PDF, Word, PowerPoint, LibreOffice o texto |
+| `343fa75` | Editar lecciones: publicadas y borradores también sin conexión, y las que esperan «Por preparar» |
 
 ## Archivos que se modifican
 
 | Archivo | Líneas |
 |---|---|
-| `web/src/App.jsx` | +275 / −48 |
+| `web/src/App.jsx` | +343 / −60 |
 | `api/main.py` | +199 / −21 |
 | `api/comprobar_profe.py` (nuevo) | +111 |
 | `web/src/comun.jsx` | +5 / −1 |
@@ -86,6 +87,24 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - `App.jsx`: botón, tarjeta del archivo y `leerAdjunto()`, que manda cada cosa a su ruta (las imágenes a `leer-foto` y lo demás a `leer-archivo`).
 - `comun.jsx`: icono `archivo`.
 
+## 5. Editar lecciones
+
+**Publicadas y borradores**
+- Se abren tocando la lección en la clase, como antes, y se cambia lo que haga falta (título, materia, lectura fácil, ejemplo y preguntas).
+- **Ahora también sin conexión:** al guardar sin red sale «Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión». Antes daba error.
+- En la lista de la clase, la lección ya sale con lo cambiado y la etiqueta **«Sin enviar»**. Al volver la red se envía sola (al abrir la app, con el evento `online` y cada 30 s) y la etiqueta desaparece.
+- Si se cambia varias veces sin red, solo se envía la última versión. Si después se guarda con red, la versión vieja que esperaba en el móvil se descarta.
+- Sin red se comprueba lo mismo que en la API: que no falte ningún texto y que no haya dos opciones ni dos preguntas iguales.
+- Si al enviarlo el servidor lo rechaza, la etiqueta pasa a «Error al guardar». Al abrir la lección se ve el porqué, y al guardarla otra vez se reintenta.
+
+**«Por preparar» (las que esperan conexión o la IA)**
+- Cada una tiene ahora **«Editar»**, además de «Quitar». Abre «Lección por preparar» con su título, fotos y archivos, texto y materia, para cambiarlos.
+- Al pulsar «Preparar la lección» se sustituye la que había: no se duplica, porque guarda el mismo id. Si hay red y la IA está encendida, se prepara en ese momento.
+- Editarla quita el error que tuviera, por ejemplo una foto sin texto, y se vuelve a intentar.
+
+**Web (`App.jsx`)**
+- Cola nueva en `localStorage`: `profe-cambios`, con el último cambio de cada lección (`{id, codigo, leccion, publicar}`). Se envía con el `PUT /api/clases/{codigo}/lecciones/{id}` de siempre: la API no cambia.
+
 ## Cómo comprobarlo
 
 - Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» y «Leer archivos»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
@@ -95,10 +114,12 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
   3. Chrome → DevTools → Network → «Offline». Haz otra lección: sale en «Por preparar».
   4. Quita «Offline»: en unos 30 s aparece como «Borrador».
   5. En «Nueva lección», «Subir un archivo» con un PDF o un Word y «Leer el archivo»: su texto sale en el paso 3.
+  6. Sin red, abre una lección publicada, cambia el título y guarda: en la clase sale con «Sin enviar». Al volver la red, la etiqueta desaparece y el cambio está en el servidor.
+  7. Sin red, en «Por preparar» pulsa «Editar», cambia el título y «Preparar la lección»: sigue habiendo una sola, con el título nuevo.
 
 ## Ojo
 
 - La API necesita **Python 3.11** (`api/.venv`). Con el Python 3.9 de Xcode no arranca y la web se queda cargando.
 - **Librería nueva: `pypdf`**, solo para los PDF. En cada ordenador que arranque la API: `cd api && source .venv/bin/activate && pip install pypdf`. Sin ella, todo lo demás funciona y al subir un PDF sale «Para leer PDF falta pypdf…».
 - Para leer fotos y preparar lecciones hace falta **Ollama** encendido con `qwen3-vl:4b-instruct`.
-- Sin hacer: guardar cambios de una lección sin conexión, preparar lecciones con la app cerrada y un tiempo máximo de espera si el servidor no contesta.
+- Sin hacer: preparar lecciones o enviar cambios con la app cerrada y un tiempo máximo de espera si el servidor no contesta.
