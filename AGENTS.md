@@ -48,6 +48,9 @@ Una web que se instala en el móvil (PWA) para escuelas donde internet es lento,
 
 - API: `cd api && source .venv/bin/activate && uvicorn main:app --reload --port 8000`
 - Web: `cd web && npm run dev` (el proxy de Vite manda `/api` al puerto 8000)
+- **En línea (sin el Mac): https://51.95.206.229**, en el servidor de Plikai en AWS.
+  - **Norma: lo que está en `main` de GitHub es lo que se ve en línea.** Cada push a `main` lo compila GitHub Actions (`.github/workflows/en-linea.yml`, que lo deja en la rama `en-linea`) y el servidor lo pone en línea solo en 1-3 minutos. Para que se vea un cambio: commit y push a `main`. **No subas nada a mano al servidor** ni toques la rama `en-linea`. Si algo se rompe en `main`, se rompe en línea: comprueba antes. La base de datos del servidor no se toca.
+  - La IA es la GPU de AWS: enciéndela con `~/.plikai-gpu/mochila.sh` o «1 Encender la IA» (unos 0,85 $/h, se apaga sola a los 30 min sin uso); si está apagada, la app funciona pero no prepara lecciones.
 - El modo sin conexión (service worker) **solo funciona en `localhost` o con https**. Para la demo: Chrome en el Mac → DevTools → Network → «Offline». Para enseñarlo en un móvil hace falta https (por ejemplo, un túnel de `cloudflared`).
 
 ## La demo (todo tiene que llevar a esto)
