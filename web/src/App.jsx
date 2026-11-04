@@ -891,13 +891,13 @@ function CampoContrasena({ id, valor, onCambio, nueva = false, autoFocus = false
   )
 }
 
-function CampoCodigo({ valor, onCambio }) {
+function CampoCodigo({ valor, onCambio, opcional = false }) {
   return (
     <div className="campo-grupo">
-      <label htmlFor="codigo-clase" className="etiqueta">{t('Código de la clase')}</label>
+      <label htmlFor="codigo-clase" className="etiqueta">{opcional ? t('Código de la clase (si lo tienes)') : t('Código de la clase')}</label>
       <input id="codigo-clase" className="campo campo-codigo" value={valor} onChange={e => onCambio(e.target.value.toUpperCase())} maxLength={12}
         autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
-      <p className="pista">{t('Son 6 letras y números. Te lo dice tu profe.')}</p>
+      <p className="pista">{t('Son 6 letras y números. Te lo dice tu profe.')}{opcional && ` ${t('Si no lo tienes, déjalo vacío: podrás entrar en tu clase más tarde.')}`}</p>
     </div>
   )
 }
@@ -1024,7 +1024,7 @@ function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
     try {
       const a = await api('/api/alumnos', { method: 'POST', body: antiguo
         ? { nombre, usuario: elUsuario, contrasena, alumno_id: antiguo.id }
-        : { nombre, usuario: elUsuario, contrasena, clase: codigoLimpio } })
+        : { nombre, usuario: elUsuario, contrasena, clase: codigoLimpio || null } })
       await recordarEnAparato(a, contrasena)
       if (antiguo) {
         guardar(`clases:${a.id}`, leer('alumno-clases', [])) // sus lecciones siguen en el aparato sin conexión
@@ -1062,9 +1062,9 @@ function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
           <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
           <p className="pista">{t('Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.')}</p>
         </div>
-        {!antiguo && <CampoCodigo valor={codigo} onCambio={setCodigo} />}
+        {!antiguo && <CampoCodigo valor={codigo} onCambio={setCodigo} opcional />}
         <Aviso texto={error} />
-        <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || (!antiguo && codigoLimpio.length !== 6)}
+        <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || ![0, 6].includes(codigoLimpio.length)}
           className="boton boton-principal boton-ancho boton-grande">
           {enviando ? t('Guardando…') : antiguo ? t('Guardar y entrar') : t('Crear y entrar')}
         </button>

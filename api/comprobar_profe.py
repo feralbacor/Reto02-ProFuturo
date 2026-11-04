@@ -70,3 +70,13 @@ fr = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titu
 assert fr["leccion"]["idioma"] == "fr" and fr["leccion"]["titulo"] == "L'eau"
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "idioma": "xx"}, headers=sesion).status_code == 400
 print("Idioma de la lección: todo bien")
+
+# Crear usuario de estudiante: el código de la clase es opcional, pero si se escribe mal sigue dando error.
+sin = api.post("/api/alumnos", json={"nombre": "Feli", "usuario": "felisinclase", "contrasena": "1234"})
+assert sin.status_code == 200, sin.text
+assert api.post("/api/alumnos", json={"nombre": "Feli", "usuario": "feliconclase", "contrasena": "1234", "clase": "NOEXIS"}).status_code == 404
+con = api.post("/api/alumnos", json={"nombre": "Feli", "usuario": "feliconclase", "contrasena": "1234", "clase": suya}).json()
+with main.closing(main.db()) as c:
+    clases = lambda a: [f[0] for f in c.execute("SELECT clase FROM matriculas WHERE alumno = ?", (a,))]
+    assert clases(sin.json()["id"]) == [] and clases(con["id"]) == [suya]
+print("Usuario de estudiante sin clase: todo bien")
