@@ -6,4 +6,17 @@
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
+  font-size: 18px;
+  background: #f5f5f4;
+  color: #1c1917;
+  -webkit-text-size-adjust: 100%;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
+@keyframes girar {
+  to { transform: rotate(360deg); }
 }

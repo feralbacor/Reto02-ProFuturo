@@ -21,14 +21,14 @@ Una web que se instala en el móvil (PWA) para escuelas donde internet es lento,
 
 - `web/`: Vite + React (JavaScript, sin TypeScript). PWA con `vite-plugin-pwa`.
 - `api/`: Python 3.11 + FastAPI + SQLite (módulo `sqlite3`, sin ORM).
-- IA con Amazon Bedrock, desde `api/` con `boto3` y la API `converse`, región `us-east-1`, con las credenciales que ya tiene el Mac (perfil `default`). **Nunca escribas claves en el código.**
-  - Leer la foto de la página: `global.moonshotai.kimi-k3` (sí ve imágenes). Se manda como bloque `image` con los bytes en JPEG.
-  - Generar la lección: `zai.glm-5`. Pide **solo JSON** y quita los ```json si los pone. Si el JSON no es válido, reintenta una vez.
-  - Pon `read_timeout=300` en boto3: Kimi puede tardar hasta un minuto. Mientras tanto, la web dice «Leyendo la página…».
-- Antes de subir una foto, la web la reduce a 1600 px de lado en JPEG: menos datos móviles y Bedrock no acepta imágenes de más de 3,75 MB.
-- Datos en el móvil: `localStorage`. Cada respuesta lleva un `id` (`crypto.randomUUID()`) y va a una cola «pendientes».
+- **IA local y sin internet**: Ollama en el ordenador del profe, modelo `qwen3-vl:4b-instruct` (3,3 GB) para leer las fotos y para preparar la lección. Elegido midiendo: leyó 184 de 185 palabras de una foto muy mala sin inventarse nada. **No vuelvas a Bedrock ni a otra IA en la nube**: es la idea del reto. Nunca escribas claves en el código.
+  - La API prueba primero `localhost:11435` (un túnel a una GPU, si está abierto) y si no, `localhost:11434` (el Ollama del Mac). Todo está en `preguntar_ia()` de `api/main.py`.
+  - La lección sale con «structured outputs» de Ollama (`format` = esquema JSON), se valida con `leccion_valida()` y se barajan las opciones.
+- Antes de subir una foto, la web la reduce a 1600 px de lado en JPEG (unos 100-300 KB): lee igual de bien y gasta muchos menos datos. Una petición por foto.
+- Clases: el profe crea la clase y sale un código de 6 letras. El alumno escribe su nombre y el código. El alumno vive en el móvil (`alumno-perfil` en `localStorage`, con un id) y puede estar en varias clases. `GET /api/alumnos/{id}/clases` devuelve sus clases con las lecciones publicadas enteras, para poder usarlas sin conexión.
+- Datos en el móvil: `localStorage`. Cada respuesta lleva un `id` (`nuevoId()`) y el id del alumno, y va a una cola «pendientes».
 - Sincronización: `POST /api/sync` con los pendientes y la fecha del último sync. El servidor guarda con `INSERT OR IGNORE` por `id`: si llega dos veces, no se duplica. Devuelve las lecciones y los avisos nuevos desde esa fecha. Se sincroniza al abrir la app, con el evento `online` y cada 30 s.
-- Sin cuentas ni contraseñas: hay un código de clase (p. ej. `CLASE-5A`) y una lista de nombres. Es una demo.
+- Sin cuentas ni contraseñas: basta con el código de la clase. Es una demo.
 
 ## Reglas
 
