@@ -32,6 +32,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        importScripts: ['segundo-plano.js'], // sincronización con la app cerrada (lo pidió Fernando; es de Claude)
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,
