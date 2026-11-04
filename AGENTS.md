@@ -40,6 +40,7 @@ Una web que se instala en el móvil (PWA) para escuelas donde internet es lento,
 - **No ejecutes comandos `aws`** ni borres nada fuera de esta carpeta.
 - Tú no ves imágenes. Si te paso una captura, dime que no la ves y pídeme que te copie el texto. **No te inventes lo que pone.**
 - Si algo falla dos veces seguidas, para y explícame qué pasa antes de seguir cambiando cosas.
+- **No ejecutes uvicorn ni npm run dev**: se quedan esperando para siempre. Los servidores los arranco yo en otras pestañas.
 
 ## Cómo arrancarlo (ir actualizando)
 

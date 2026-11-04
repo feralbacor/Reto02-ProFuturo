@@ -5,6 +5,7 @@ import sqlite3
 import os
 import json
 import boto3
+from botocore.config import Config
 from datetime import datetime
 import uuid
 
@@ -73,7 +74,8 @@ def transcribir_imagen(imagen_base64: str) -> str:
     import base64
     imagen_bytes = base64.b64decode(imagen_base64.split(',')[1] if ',' in imagen_base64 else imagen_base64)
     
-    client = boto3.client('bedrock-runtime', region_name='us-east-1', read_timeout=300)
+    config = Config(read_timeout=300)
+    client = boto3.client('bedrock-runtime', region_name='us-east-1', config=config)
     
     response = client.converse(
         modelId='global.moonshotai.kimi-k3',
@@ -101,7 +103,8 @@ def transcribir_imagen(imagen_base64: str) -> str:
 
 
 def generar_leccion(texto: str) -> dict:
-    client = boto3.client('bedrock-runtime', region_name='us-east-1')
+    config = Config(read_timeout=300)
+    client = boto3.client('bedrock-runtime', region_name='us-east-1', config=config)
     
     prompt = f"""Eres un maestro experto en crear material educativo para estudiantes. A partir del siguiente texto de un libro de texto, crea una lección completa.
 
