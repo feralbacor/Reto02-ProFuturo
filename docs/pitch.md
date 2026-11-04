@@ -46,11 +46,11 @@ Queremos que perder la conexión deje de significar perder la clase.
 
 Notas fuera del discurso:
 
-- La generación de una lección tardó unos 45 s en las pruebas comunicadas por el equipo. La respuesta a una duda tardó 5–10 s; no es un plazo garantizado.
+- El equipo comunicó una generación anterior de unos 45 s y una generación en francés de 103 s con la API multilingüe ya integrada. La respuesta a una duda tardó 5–10 s; no es un plazo garantizado.
 - El modelo ocupa unos 3,3 GB. El equipo midió 185/185 palabras en una foto realista y 184/185 en una muy mala, sin palabras inventadas en esas pruebas. No son métricas de exactitud general ni se han repetido aquí.
 - Si la respuesta en directo tarda, mostrar una de las dudas preparadas y decir expresamente que es de ejemplo. No simular una recepción.
 - «Escuchar» requiere voz local para funcionar offline. No es un cuarto paso de la nueva navegación.
 - Una demostración con movil.sh utiliza un túnel externo y necesita Internet para llegar al servidor; no equivale al despliegue enteramente local descrito en el discurso.
 
-- Selector de portada: cambia la interfaz; el idioma de la lección y su voz son independientes. En el paso 4 del profe se elige el idioma del contenido, cuya generación en la API aún debe integrarse y probarse. Para una demo multilingüe fiable, usar las lecciones fr/en manuales de AULA23.
+- Selector de portada: cambia la interfaz; el idioma de la lección y su voz son independientes. En el paso 4 del profe se elige el idioma del contenido, que la API ya genera en esa lengua. Las dudas también se contestan en el idioma de la lección. Para una demo multilingüe fiable, usar las lecciones fr/en manuales de AULA23.
 - Francés e inglés revisados; las otras traducciones son borradores automáticos pendientes de revisión nativa. No presentar «23 idiomas» como 23 traducciones certificadas.
