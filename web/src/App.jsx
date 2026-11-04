@@ -13,6 +13,10 @@ try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+// La app instalada no recarga la página al volver a ella: al abrirla de nuevo o al volver la red, mira si hay versión nueva.
+const buscarVersion = () => navigator.serviceWorker?.getRegistration().then(r => r?.update()).catch(() => {})
+document.addEventListener('visibilitychange', () => { if (!document.hidden) buscarVersion() })
+window.addEventListener('online', buscarVersion)
 
 // Agrupa una lista de lecciones por materia, en el orden en que aparece cada materia.
 const porMateria = (lecciones, materiaDe) => {
