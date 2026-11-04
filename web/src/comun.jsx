@@ -1,4 +1,5 @@
 // Estilos y utilidades que usan todas las pantallas. Es de Claude (ver REPARTO.md): se puede importar, no editar.
+import { t } from './idioma.js'
 
 // ---------- Estilos ----------
 // El diseño está en estilo.css (clases). Estos objetos son para quien usa estilos en línea (Panel.jsx),
@@ -47,7 +48,7 @@ const TRAZOS = {
 }
 export function Icono({ nombre, tam = 24, className }) {
   return (
-    <svg width={tam} height={tam} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className} style={{ flexShrink: 0 }}>
+    <svg width={tam} height={tam} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`icono-${nombre} ${className || ''}`} style={{ flexShrink: 0 }}>
       <path d={TRAZOS[nombre]} />
     </svg>
   )
@@ -166,7 +167,7 @@ export function reducirFoto(archivo, ladoMax = 1600) {
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error(`No se puede abrir «${archivo.name}». Prueba con una foto en JPG o PNG.`))
+      reject(new Error(t('No se puede abrir «{nombre}». Prueba con una foto en JPG o PNG.', { nombre: archivo.name })))
     }
     img.src = url
   })
@@ -176,7 +177,7 @@ export function Cargando({ texto }) {
   return (
     <div className="cargando" role="status">
       <div className="ruedita" />
-      <p>{texto}</p>
+      <p>{t(texto)}</p>
     </div>
   )
 }
@@ -184,5 +185,5 @@ export function Cargando({ texto }) {
 // Aviso de error (por defecto) o de que algo ha ido bien (color = COLOR.verde).
 export function Aviso({ texto, color = COLOR.rojo }) {
   if (!texto) return null
-  return <p role="alert" className={`aviso ${color === COLOR.verde ? 'aviso-ok' : 'aviso-error'}`}>{texto}</p>
+  return <p role="alert" className={`aviso ${color === COLOR.verde ? 'aviso-ok' : 'aviso-error'}`}>{t(texto)}</p>
 }

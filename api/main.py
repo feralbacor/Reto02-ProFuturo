@@ -128,7 +128,7 @@ def normalizar_codigo(codigo: str) -> str:
 def buscar_clase(c, codigo):
     clase = c.execute("SELECT codigo, nombre FROM clases WHERE codigo = ?", (normalizar_codigo(codigo),)).fetchone()
     if not clase:
-        raise HTTPException(404, f"No hay ninguna clase con el código {normalizar_codigo(codigo)}. Revisa que esté bien escrito.")
+        raise HTTPException(404, "No hay ninguna clase con ese código. Revisa que esté bien escrito.")
     return clase
 
 
@@ -250,6 +250,14 @@ def materia_de(c, codigo: str, materia) -> str:
 
 # ---------- IA local (Ollama) ----------
 
+# Los mismos códigos que web/src/idioma.js; el nombre va en la instrucción para la IA.
+IDIOMAS = {
+    "es": "español", "fr": "francés", "en": "inglés", "ar": "árabe", "pt": "portugués", "sw": "suajili",
+    "am": "amárico", "om": "oromo", "ti": "tigriña", "so": "somalí", "ha": "hausa", "yo": "yoruba", "ig": "igbo",
+    "ak": "twi (akan)", "wo": "wólof", "ln": "lingala", "rw": "kinyarwanda", "mg": "malgache", "ny": "chichewa",
+    "sn": "shona", "zu": "zulú", "xh": "xhosa", "af": "afrikáans",
+}
+
 PROMPT_LEER = """Transcribe exactamente todo el texto de esta foto de una página de libro, en el orden en que se lee.
 - Copia las palabras tal cual, con sus tildes y signos. No corrijas, no resumas, no traduzcas.
 - Incluye títulos, recuadros y pies de foto. No incluyas el número de página.
@@ -257,7 +265,8 @@ PROMPT_LEER = """Transcribe exactamente todo el texto de esta foto de una págin
 - Si en la foto no hay texto legible, responde solo: SIN TEXTO
 Devuelve solo el texto, sin comentarios."""
 
-PROMPT_LECCION = """Eres maestro de primaria. Con el TEXTO de abajo prepara una lección en español para alumnos de 8 a 12 años.
+PROMPT_LECCION = """Eres maestro de primaria. Con el TEXTO de abajo prepara una lección en {idioma} para alumnos de 8 a 12 años.
+Escribe TODO en {idioma} (título, lectura, ejemplo, preguntas y respuestas), aunque el TEXTO esté en otro idioma.
 - "titulo": corto y claro.
 - "lectura_facil": lo mismo que dice el texto, contado con frases cortas (15 palabras como mucho) y palabras sencillas. Entre 80 y 200 palabras. Usa solo información del texto, no añadas datos.
 - "explicacion_ejemplo": explica la idea principal con un ejemplo de la vida diaria (la casa, la escuela, el campo). De 2 a 4 frases. El ejemplo tiene que ser cierto y tener sentido.
@@ -274,9 +283,10 @@ TEXTO:
 ESQUEMA_LECCION = {
     "type": "object",
     "properties": {
-        "titulo": {"type": "string"},
-        "lectura_facil": {"type": "string"},
-        "explicacion_ejemplo": {"type": "string"},
+        # Con largo máximo: en otros idiomas el modelo pequeño a veces repite una frase sin parar y el JSON llega cortado.
+        "titulo": {"type": "string", "maxLength": 80},
+        "lectura_facil": {"type": "string", "maxLength": 1600},
+        "explicacion_ejemplo": {"type": "string", "maxLength": 700},
         "preguntas": {
             "type": "array",
             "minItems": 5,
@@ -286,10 +296,10 @@ ESQUEMA_LECCION = {
                 # La respuesta buena va como texto (y su porqué antes que las incorrectas): los modelos pequeños
                 # se equivocan al dar la posición de la buena, pero no al escribirla.
                 "properties": {
-                    "pregunta": {"type": "string"},
-                    "respuesta_correcta": {"type": "string"},
-                    "porque": {"type": "string"},
-                    "incorrectas": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string"}},
+                    "pregunta": {"type": "string", "maxLength": 200},
+                    "respuesta_correcta": {"type": "string", "maxLength": 120},
+                    "porque": {"type": "string", "maxLength": 300},
+                    "incorrectas": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string", "maxLength": 120}},
                 },
                 "required": ["pregunta", "respuesta_correcta", "porque", "incorrectas"],
             },
@@ -323,7 +333,7 @@ def preguntar_ia(prompt, imagen=None, formato=None, max_tokens=1500):
         "messages": [mensaje],
         "stream": False,
         "keep_alive": "30m",
-        "options": {"temperature": 0.3 if formato else 0, "num_ctx": 8192, "num_predict": max_tokens},
+        "options": {"temperature": 0.3 if formato else 0, "num_ctx": 8192, "num_predict": max_tokens, "repeat_penalty": 1.1},
     }
     if formato:
         cuerpo["format"] = formato
@@ -389,16 +399,16 @@ def juntar_opciones(leccion):
     return leccion
 
 
-def crear_leccion_con_ia(texto):
+def crear_leccion_con_ia(texto, idioma="es"):
     for _ in range(2):  # si sale mal, se intenta una vez más
-        respuesta = preguntar_ia(PROMPT_LECCION.format(texto=texto), formato=ESQUEMA_LECCION, max_tokens=2500)
+        respuesta = preguntar_ia(PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma]), formato=ESQUEMA_LECCION, max_tokens=2500)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
             continue
         leccion = juntar_opciones(leccion)
         if leccion_valida(leccion):
-            return barajar_opciones(leccion)
+            return {**barajar_opciones(leccion), "idioma": idioma}
     raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
 
 
@@ -406,10 +416,14 @@ def crear_leccion_con_ia(texto):
 # El estudiante pregunta sobre una lección, también sin conexión: la duda viaja con la sincronización, la IA
 # de este ordenador la contesta en un hilo aparte (solo con lo que dice la lección) y la respuesta vuelve en la siguiente.
 NO_ESTA = "Eso no está en esta lección. Pregúntaselo a tu profe."
+AJENA = "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección."
 PROMPT_DUDA = """Eres el profe de un niño o una niña de 8 a 12 años. Te hace una pregunta sobre la LECCIÓN de abajo.
-- Contesta en español, en 1 a 3 frases cortas, con palabras sencillas, hablándole de tú.
+- Contesta en el mismo idioma en que está escrita la LECCIÓN, en 1 a 3 frases cortas, con palabras sencillas, hablándole de tú.
 - Usa solo lo que dice la LECCIÓN. No inventes datos.
-- Si la respuesta no está en la LECCIÓN, o la pregunta no tiene que ver con ella, contesta exactamente: {no_esta}
+- Contesta ya y entero. No digas que lo explicarás «paso a paso» ni después, y no acabes con una pregunta: no te puede contestar.
+- Si la pregunta no dice qué no entiende (como «no entiendo nada» o «no lo entiendo»), no expliques la lección: pídele en una frase que pregunte algo concreto y dale un ejemplo de pregunta sobre la LECCIÓN.
+- Si la pregunta no tiene nada que ver con la LECCIÓN (como «¿lloverá mañana?», «¿quién ganó el partido?» o «¿cuántos años tienes?»), contesta solo: AJENA
+- Si la pregunta es sobre el tema de la LECCIÓN pero la respuesta no está en ella, contesta solo: NO_ESTA
 
 LECCIÓN:
 <<<
@@ -421,10 +435,16 @@ PREGUNTA: {pregunta}"""
 
 def contestar_duda(contenido: dict, pregunta: str) -> str:
     leccion = "\n\n".join(str(contenido.get(k, "")) for k in ("titulo", "lectura_facil", "explicacion_ejemplo"))
-    texto = preguntar_ia(PROMPT_DUDA.format(no_esta=NO_ESTA, leccion=leccion, pregunta=pregunta), max_tokens=200).strip()
-    # El modelo pequeño a veces copia solo el principio de la frase: siempre la misma, entera, para que el niño sepa qué hacer.
-    if not texto or texto.lower().startswith("eso no está en esta lección"):
+    texto = preguntar_ia(PROMPT_DUDA.format(leccion=leccion, pregunta=pregunta), max_tokens=200).strip()
+    # Siempre la misma frase, en español: la app la traduce al idioma del niño.
+    if "AJENA" in texto:
+        return AJENA
+    if not texto or "NO_ESTA" in texto or texto.lower().startswith("eso no está en esta lección"):
         return NO_ESTA
+    # La IA a veces acaba con «¿Te gustaría saber…?», y el niño no puede contestar: se quita si antes ya ha explicado algo.
+    # shortcut: solo mira el «¿» del español; si las lecciones en otros idiomas también lo hacen, cortar por la última frase.
+    if "¿" in texto and not texto.startswith("¿") and texto.endswith("?"):
+        texto = texto[:texto.rfind("¿")].strip()
     return texto[:600]
 
 
@@ -890,6 +910,7 @@ def leer_archivo(codigo: str, datos: Archivo):
 class NuevaLeccion(BaseModel):
     texto: str
     materia: str = ""
+    idioma: str = "es"
     titulo: str = ""  # si el profe lo escribe, se usa este; si no, el que pone la IA
     id: str | None = None  # la pone el móvil del profe: si la envía dos veces (sin conexión), no se duplica
 
@@ -906,7 +927,9 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
         hecha = datos.id and c.execute("SELECT contenido FROM lecciones WHERE id = ? AND clase = ?", (datos.id, clase["codigo"])).fetchone()
     if hecha:
         return {"id": datos.id, "leccion": json.loads(hecha["contenido"])}
-    leccion = crear_leccion_con_ia(texto[:8000])
+    if datos.idioma not in IDIOMAS:
+        raise HTTPException(400, "Ese idioma no está en la lista.")
+    leccion = crear_leccion_con_ia(texto[:8000], datos.idioma)
     if " ".join(datos.titulo.split()):
         leccion["titulo"] = " ".join(datos.titulo.split())[:120]
     leccion_id = datos.id or str(uuid.uuid4())

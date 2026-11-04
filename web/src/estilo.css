@@ -78,7 +78,7 @@ mark, .rotulador {
 .boton-ancho { width: 100%; }
 .boton-grande { min-height: 62px; font-size: 21px; border-radius: 14px; }
 .boton-pequeno { min-height: 46px; padding: 0 14px; font-size: 17px; }
-.volver { margin-left: -10px; padding-left: 4px; }
+.volver { margin-inline-start: -10px; padding-inline-start: 4px; }
 .botones { display: flex; flex-direction: column; gap: 12px; }
 .botones-fila { display: flex; gap: 12px; flex-wrap: wrap; }
 .botones-fila > .boton { flex: 1 1 200px; }
@@ -91,7 +91,7 @@ mark, .rotulador {
 
 /* La elección grande de la portada */
 .eleccion {
-  display: flex; align-items: center; gap: 16px; width: 100%; padding: 20px; min-height: 96px; text-align: left;
+  display: flex; align-items: center; gap: 16px; width: 100%; padding: 20px; min-height: 96px; text-align: start;
   border-radius: 16px; border: 1px solid var(--borde-fuerte); background: var(--superficie); box-shadow: var(--sombra-media); cursor: pointer;
   transition: transform 0.08s;
 }
@@ -99,12 +99,12 @@ mark, .rotulador {
 .eleccion-principal { background: var(--amarillo); border-color: var(--amarillo); color: var(--sobre-amarillo); }
 .eleccion-titulo { display: block; font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
 .eleccion-detalle { display: block; font-size: 17px; margin-top: 4px; opacity: 0.85; }
-.eleccion .icono-final { margin-left: auto; flex-shrink: 0; }
+.eleccion .icono-final { margin-inline-start: auto; flex-shrink: 0; }
 
 /* ---------- Tarjetas y filas ---------- */
 .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; box-shadow: var(--sombra); padding: 18px; }
 .fila {
-  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; padding: 14px 16px; text-align: left;
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; padding: 14px 16px; text-align: start;
   background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; box-shadow: var(--sombra); cursor: pointer;
   transition: border-color 0.15s, transform 0.08s;
 }
@@ -166,7 +166,7 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 
 /* ---------- Lección ---------- */
 .pasos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 22px 0 24px; }
-.paso { min-height: 48px; padding: 10px 2px 0; text-align: left; background: none; border: 0; border-top: 5px solid var(--borde); font-size: 16px; font-weight: 650; color: var(--tinta-suave); cursor: pointer; }
+.paso { min-height: 48px; padding: 10px 2px 0; text-align: start; background: none; border: 0; border-top: 5px solid var(--borde); font-size: 16px; font-weight: 650; color: var(--tinta-suave); cursor: pointer; }
 .paso-hecho { border-top-color: var(--tinta-media); color: var(--tinta-media); }
 .paso-actual { border-top-color: var(--amarillo); color: var(--tinta); }
 .hoja { background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; box-shadow: var(--sombra-hoja); padding: 20px 20px 24px; }
@@ -178,7 +178,7 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 .pregunta-texto { font-size: 25px; font-weight: 750; line-height: 1.25; letter-spacing: -0.015em; margin: 6px 0 18px; }
 .opciones { display: flex; flex-direction: column; gap: 10px; }
 .opcion {
-  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 66px; padding: 12px 14px; text-align: left;
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 66px; padding: 12px 14px; text-align: start;
   font-size: 19px; line-height: 1.3; background: var(--superficie); border: 2px solid var(--borde); border-radius: 14px; cursor: pointer;
 }
 .opcion:disabled { cursor: default; }
@@ -198,7 +198,7 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 /* Dudas: la pregunta del estudiante y, debajo, la respuesta con una raya amarilla al lado. */
 .duda + .duda { margin-top: 12px; }
 .duda-pregunta { font-size: 19px; font-weight: 700; line-height: 1.35; }
-.duda-respuesta { margin-top: 10px; padding-left: 12px; border-left: 4px solid var(--amarillo); font-size: 19px; line-height: 1.55; color: var(--tinta-media); }
+.duda-respuesta { margin-top: 10px; padding-inline-start: 12px; border-inline-start: 4px solid var(--amarillo); font-size: 19px; line-height: 1.55; color: var(--tinta-media); }
 
 /* ---------- Profe ---------- */
 .codigo-clase { text-align: center; padding: 18px; background: var(--superficie); border: 1px dashed var(--borde-fuerte); border-radius: 14px; }
@@ -219,3 +219,8 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 /* index.css apaga todos los botones desactivados; las opciones ya contestadas tienen que verse bien. */
 .opcion:disabled { opacity: 1; cursor: default !important; }
 .opcion.opcion-apagada:disabled { opacity: 0.5; }
+
+/* ---------- Idiomas ---------- */
+.selector-idioma { width: auto; max-width: 60%; min-height: 48px; padding: 0 10px; font-size: 17px; }
+/* En árabe se lee de derecha a izquierda: las flechas miran al otro lado. */
+[dir="rtl"] .icono-seguir, [dir="rtl"] .icono-volver { transform: scaleX(-1); }

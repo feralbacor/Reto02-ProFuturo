@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto: llamadas.append(texto) or dict(leccion)
+main.crear_leccion_con_ia = lambda texto, idioma="es": llamadas.append(texto) or {**leccion, "idioma": idioma}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
@@ -109,3 +109,8 @@ assert r.status_code in (200, 503), r.text  # 503: falta pypdf en este ordenador
 if r.status_code == 200:
     assert r.json()["texto"] == frase, r.json()
 print("Leer archivos: todo bien" + ("" if r.status_code == 200 else " (sin probar PDF: falta pypdf)"))
+# Con main (idiomas): la lección va en el idioma elegido y conserva el título del profe; un idioma que no está, 400.
+fr = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titulo": "L'eau", "idioma": "fr"}, headers=sesion).json()
+assert fr["leccion"]["idioma"] == "fr" and fr["leccion"]["titulo"] == "L'eau"
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "idioma": "xx"}, headers=sesion).status_code == 400
+print("Idioma de la lección: todo bien")

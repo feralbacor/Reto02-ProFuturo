@@ -1,117 +1,81 @@
-# Mochila · Guion de demostración
+# Mochila · Guion de demo
 
-> Textos provisionales: Claude está rediseñando pantallas y botones. Esperar su lista nueva y contrastar este guion con la versión integrada antes de cerrar el ensayo.
+Textos contrastados con App.jsx del rediseño y «Tengo una duda», integrados en esta rama desde main. Falta el ensayo en un móvil real. Profe en el portátil; estudiante en el móvil. El docente prepara y revisa contenido; el estudiante lee, responde y pregunta.
 
-## Reparto y estado de este guion
+## Preparación
 
-- **Profe / presentador:** portátil del aula, con la aplicación, la API y Ollama local preparados.
-- **Alumno / segunda persona:** móvil con la aplicación instalada o abierta, una voz local probada y la lección descargada.
-- **Antes del evento:** una persona comprueba el recorrido completo en ambos aparatos.
+1. Ejecutar la carga de AULA23 y comprobar las credenciales desde la pantalla del profe. PIN inicial 1234; estudiante aula23ana, contraseña inicial 1234. La carga conserva cambios previos de credenciales. [Accesos de demo](demo.md).
+2. Tener una lección publicada y descargada en el móvil. No depender de que la IA cree una lección durante los tres minutos. AULA23 incluye cuatro lecciones y tres dudas ficticias: una respuesta preparada como ejemplo de IA, otra revisada por el profe y una pendiente. El hilo local puede contestar la pendiente después; no se reinicia al repetir la carga.
+3. Preparar dos cuentas en el mismo móvil, entrar con ambas conectado al aula y descargar sus lecciones. Elegir una voz local si se quiere demostrar audio offline.
+4. Servidores y Ollama preparados por una persona. Modelo qwen3-vl:4b-instruct descargado previamente; comprobar que se ejecuta en el ordenador del aula y no en un túnel a una GPU remota.
+5. Usar versión compilada y origen HTTPS de confianza en el móvil. Esperar el aviso de que la aplicación y las lecciones están guardadas. No cambiar de dirección, borrar datos del navegador ni reinstalar entre pasos.
+6. Para probar una instalación sin Internet, usar una wifi local y HTTPS local preparados de antemano. movil.sh facilita HTTPS mediante un túnel público: sirve para ensayar el corte del móvil, pero necesita Internet para reconectar con el ordenador.
 
-Este guion incorpora main (6163d10), con PIN, materias, cuentas de alumno y sincronización en segundo plano. Falta ensayar el recorrido completo en el portátil y el móvil. Los textos entre «comillas» son los facilitados por el equipo o los presentes en la interfaz revisada. No se inventa un texto para el botón que confirma el PIN: comprobar su rótulo al integrar.
+## Recorrido principal · durante el pitch
 
-## Preparar antes de presentar
-
-1. Tener una clase accesible al profe y una lección **ya publicada y descargada en el móvil**. Usar esa misma lección en el recorrido principal y como plan B. Elegir cinco preguntas que ambos demostradores conozcan.
-2. Preparar el PIN del docente (4 a 8 números) y anotar por separado el código de alumno generado (6 letras). No compartir el PIN con el alumnado.
-3. **AULA23 es el código fijo de la clase de datos ficticios**, no un ejemplo de seis letras generadas. Contiene seis alumnos y dos lecciones. El script adaptado crea el PIN 1234 y las cuentas aula23ana, aula23bruno, aula23carla, aula23diego, aula23elena y aula23farid con contraseña inicial 1234. Conserva las credenciales existentes y añade un sufijo si un usuario está ocupado. Consultar [demo.md](demo.md) para el acceso.
-4. Descargar previamente el modelo local qwen3-vl:4b (unos 3,3 GB). Comprobar que se ejecuta en el portátil del aula y que no depende del túnel a una GPU remota. La creación de material necesita ese ordenador encendido; el alumno puede usar el material descargado sin él.
-5. Conectar portátil y móvil a la misma wifi local. Para demostrar que no se usa Internet, retirar la salida a Internet manteniendo esa red local, después de haber preparado la aplicación y el modelo.
-6. Para el service worker y la reapertura offline en el móvil, preparar un origen HTTPS de confianza y una versión compilada. Una dirección `http://IP-del-portátil` no basta. Un túnel público HTTPS sirve para otros ensayos, pero depende de Internet y no demuestra que los datos permanezcan en el aula. Acordar con Claude la configuración local del evento.
-7. Abrir la app con conexión al aula, descargar la lección, dejar que se active el service worker y recargar. Comprobar después la reapertura sin red. No borrar datos del navegador ni cambiar de origen o puerto durante la demo.
-8. Ensayar «Escuchar» con una voz local en el móvil. Si no está disponible, mostrar lectura y test y explicar la limitación.
-9. Tener una foto de reserva. La app permite hasta cinco imágenes; para una demo corta usar **una sola** y evitar tiempos variables innecesarios. La foto medida por el equipo quedó en unos 110 KB tras reducirla; el tamaño depende de la imagen.
-10. Comprobar «Ver notas» a 360 px de ancho: letra legible, controles grandes y tabla desplazable. Los datos de AULA23 son ficticios; si se crearon hace días, puede haber más avisos de inactividad porque el script conserva sus fechas.
-
-## Recorrido principal · incluido en el pitch
-
-Preparar de antemano la clase, el perfil del alumno y la lección publicada. Reservar aproximadamente 50 segundos de la presentación; ensayar las respuestas para no agotar ese tiempo. Si se necesita más tiempo, completar la demostración después del pitch.
-
-| Paso | Quién y dónde | Acción y texto de interfaz | Qué decir y qué comprobar |
+| Paso | Quién | Acción exacta | Qué decir y comprobar |
 | --- | --- | --- | --- |
-| 1 | Profe, portátil | «Soy profe» → abrir la clase preparada. Introducir el PIN si se solicita. | «Esta clase está protegida para el docente. El alumno utiliza otro código.» Comprobar que se abre. |
-| 2 | Alumno, móvil | «Soy alumno» → «¿Quién eres?» → elegir un perfil preparado, escribir su contraseña y pulsar «Entrar». Abrir la clase y una lección de su materia. | «El material ya está descargado y organizado por materia.» Para mostrar un alta nueva, usar «Crear mi usuario» y «Crear y entrar», como en el recorrido ampliado. |
-| 3 | Alumno, móvil | Abrir «Leer» y «Ejemplo». Mostrar «Escuchar» y, solo si se ha ensayado la voz local, «▶ Escuchar». | «Tenemos una lectura sencilla, un ejemplo y la posibilidad de escucharla.» Detener el audio antes de continuar. |
-| 4 | Alumno, móvil | Activar modo avión y comprobar que también están apagados wifi y datos móviles. Volver a la lección. | «Ahora el móvil no tiene conexión. El material sigue aquí.» La barra debe mostrar «Sin conexión · N respuestas por enviar», con el número real. |
-| 5 | Alumno, móvil | Entrar en «Test», elegir una opción y pulsar «Responder». Continuar con «Siguiente» y, en la quinta pregunta, «Ver resultado». Estos rótulos están verificados en la interfaz local; contrastarlos al integrar la versión nueva. | «La corrección ocurre en el móvil y las respuestas se guardan para enviarlas después.» Con un perfil sin pendientes y un test de cinco preguntas, comprobar cinco respuestas pendientes. |
-| 6 | Alumno, móvil | Desactivar modo avión y reconectar a la wifi del aula. | «Volvemos a conectar con el aula, aunque esa wifi no tenga salida a Internet.» Esperar «Todo enviado ✓». No anunciar éxito antes de verlo. |
-| 7 | Profe, portátil | «Ver notas» → «Actualizar notas». | «El docente ya puede ver los aciertos y la fecha de la última respuesta.» Identificar al alumno de prueba y su nota. Una alerta invita a ayudar, no demuestra abandono. |
+| 1 | Profe, portátil | «Soy profe» → clase AULA23 → introducir el PIN si se pide. | «El PIN protege la clase del profe. El estudiante usa su propio usuario y contraseña.» |
+| 2 | Estudiante, móvil | «Soy estudiante» → «¿Quién eres?» → elegir el perfil preparado o «Ya tengo usuario» → escribir credenciales → «Entrar». Abrir una lección descargada. | «Aquí está el material, organizado por materia.» No crear una cuenta por primera vez sin conexión. |
+| 3 | Estudiante | Mostrar «1. Leer». Pulsar «Ya lo he leído» para ir a «2. Ejemplo». | «La lectura y el ejemplo están guardados en el móvil.» Puede usarse el control de audio si la voz local está ensayada. |
+| 4 | Estudiante | Activar modo avión y comprobar que wifi y datos están desconectados. Regresar a la app. | Sin pendientes, la barra dice «Sin conexión · tus lecciones funcionan igual». No confundir ausencia de Internet con desconexión del servidor del aula. |
+| 5 | Estudiante | En Leer o Ejemplo: «Tengo una duda» → escribir «¿Cómo se llama cuando el agua pasa a vapor?» → «Enviar mi duda». | Comprobar «Mientras tanto, esto dice la lección:» y los fragmentos con origen «Leer» o «Ejemplo», junto a «Se enviará cuando haya conexión.». Explicar: «El móvil busca en el texto guardado; todavía no es una respuesta de IA». Si no encuentra coincidencias, solo aparece la espera. |
+| 6 | Estudiante | «Ir a las preguntas» → elegir opción → «Comprobar». Repetir con «Siguiente pregunta» y terminar con «Ver mi resultado». | «La corrección es inmediata, sin consultar al servidor.» Las respuestas se guardan. La barra muestra el número real de pendientes. |
+| 7 | Estudiante | Quitar modo avión, reconectar y mantener la app abierta. | Esperar «Todo enviado a tu profe». La duda puede seguir en «Esperando la respuesta…»: confirmar el envío no significa que la IA ya haya contestado. |
+| 8 | Estudiante | Abrir Leer, Ejemplo o el resultado para ver «Mis dudas». | La respuesta llega en la sincronización posterior. El equipo midió unos 5–10 s con IA disponible; si tarda, usar el plan B. |
+| 9 | Profe | En la clase, «Dudas de tus alumnos» → «Cambiar la respuesta». Revisar el texto del diálogo y confirmarlo. | «El docente puede corregir la respuesta.» La pantalla muestra las 30 últimas dudas de estudiantes matriculados. No afirmar que solo se guardan 30. |
+| 10 | Estudiante | Mantener conexión y esperar la actualización de la duda. | Comprobar «Te lo ha contestado tu profe.» |
+| 11 | Profe | «Ver notas» → «Actualizar notas». | Identificar al estudiante y sus aciertos. La falta de resultados recibidos también puede significar falta de conexión. |
 
-Si tarda la sincronización, esperar el siguiente intento periódico (hasta 30 segundos) y actualizar las notas después. Si sigue sin funcionar, usar el plan B y conservar la cola de pendientes.
+Para encajar en tres minutos, ensayar los movimientos en paralelo a la narración. Si se alarga, dejar la corrección del profe para la demostración ampliada y mostrar una duda de ejemplo claramente identificada.
 
-## Recorrido ampliado · creación en directo
+## Creación de una lección · después del pitch
 
-Esta parte se puede mostrar después del pitch. La generación requiere aproximadamente 45 segundos en el equipo probado; no incluye hacer la foto, leerla, revisar el texto y revisar la lección.
-
-| Paso | Quién y dónde | Acción y botones | Qué decir y qué comprobar |
+| Paso | Quién | Acción | Comprobación y frase |
 | --- | --- | --- | --- |
-| 1 | Profe, portátil | «Soy profe». Escribir nombre de clase y PIN de 4 a 8 números; pulsar «Crear clase». | «El PIN protege el acceso del docente desde otro aparato. El código de seis letras permite entrar al alumnado.» Anotar el código generado. |
-| 2 | Alumno, móvil | «Soy alumno» → «¿Quién eres?» → «Crear mi usuario». Escribir nombre, usuario, contraseña de al menos cuatro caracteres y código de la clase; pulsar «Crear y entrar». | «Cada alumno tiene su usuario y contraseña; no pedimos email ni apellidos.» No escribir el PIN del docente como código de alumno. |
-| 3 | Profe, portátil | «+ Nueva lección». Completar «Materia», usando una sugerencia si encaja. | «La materia organiza lo que verá el alumno.» Si falta en datos antiguos, se presenta como «General». |
-| 4 | Profe, portátil | «📷 Hacer foto» si hay cámara adecuada, o «🖼️ Elegir fotos» para una imagen preparada. Se admiten hasta cinco. | «Podemos partir del libro que ya utiliza el aula. Reducimos las fotos antes de enviarlas al ordenador local.» |
-| 5 | Profe, portátil | Con una foto seleccionada, «Leer la foto». | «La IA transcribe la página en el ordenador del aula.» Con varias fotos el rótulo puede cambiar; la demostración usa una para conservar este texto exacto. |
-| 6 | Profe, portátil | Revisar el texto reconocido y corregir cualquier error visible. | «El profesor comprueba lo que se ha leído antes de generar material.» No saltarse esta revisión. |
-| 7 | Profe, portátil | «Crear lección». | «La generación tarda unos 45 segundos en nuestro equipo de prueba. Mientras trabaja, podemos explicar cómo continúa el aprendizaje sin red.» No prometer ese tiempo para cualquier ordenador. |
-| 8 | Profe, portátil | Revisar lectura, ejemplo, preguntas y respuestas correctas; pulsar «Publicar». | «El docente decide qué material llega al alumno.» |
-| 9 | Alumno, móvil | Esperar la sincronización o reabrir la app estando conectado al aula. Abrir la lección en su materia. | «El móvil descarga las novedades. Si no hay nada nuevo, no vuelve a descargar contenido.» Continuar con los pasos offline del recorrido principal. |
+| 1 | Profe | «Soy profe». Crear una clase con nombre y PIN de 4–8 números usando «Crear clase», o abrir AULA23. | «Este código de seis letras y números lo utiliza el estudiante; el PIN es del profe.» AULA23 es el código fijo de la demo. |
+| 2 | Estudiante | «Soy estudiante» → «¿Quién eres?» → «Crear mi usuario». Nombre, usuario único de 3–20 minúsculas o números, contraseña de 4–64 caracteres, código de clase → «Crear y entrar». | «Varios niños pueden compartir un móvil sin compartir cuenta. No pedimos email ni apellidos.» |
+| 3 | Profe | «Nueva lección» → paso 1, «Las fotos de la página». «Hacer una foto» o «Elegir fotos»; máximo cinco. | Para el ensayo corto, usar una sola imagen preparada. |
+| 4 | Profe | «Leer la foto» con una sola imagen → paso 2, «El texto». | Revisar y corregir la transcripción antes de continuar. Con varias imágenes cambia el rótulo de lectura. |
+| 5 | Profe | Paso 3, «La materia»: escribir o elegir una sugerencia. Paso 4, «El idioma de la lección»: elegir el idioma y pulsar «Preparar la lección». | «El tiempo depende del equipo y del idioma: Claude midió 103 s para francés.» No prometer un tiempo fijo; la lectura y la revisión añaden tiempo. |
+| 6 | Profe | «Revisa la lección». Revisar lectura, ejemplo y preguntas; pulsar «Publicar». | Comprobar cuál es la opción correcta antes de publicar. |
+| 7 | Estudiante | Reabrir la app conectado al aula o esperar la sincronización. | Comprobar que la nueva lección aparece en su materia y está descargada antes de desconectar. |
 
-## Plan B · la demo continúa sin fingir resultados
+## Móvil compartido y recuperación
 
-| Situación | Qué hacer | Qué decir |
+- Con red, entrar con el primer estudiante y descargar. «Salir» → «¿Quién eres?» → «Ya tengo usuario» → entrar con el segundo y descargar también.
+- «Salir», activar modo avión y elegir el perfil guardado del primero. Contraseña → «Entrar». Comprobar nombre, lección y preguntas. Repetir con el segundo perfil.
+- Al reconectar, comprobar las notas de ambos. No borrar pendientes al cambiar de perfil.
+- Si olvida la contraseña, el profe utiliza «Nueva contraseña» en su clase protegida, con conexión. Probar el nuevo acceso conectado. No prometer revocación inmediata en un dispositivo que sigue offline.
+
+## Plan B
+
+| Falla | Acción | Qué decir |
 | --- | --- | --- |
-| La IA sigue generando al llegar al tiempo ensayado o devuelve un error. | No encadenar nuevas peticiones. Pasar a la lección publicada de reserva en el móvil. | «Esta generación está tardando. Vamos a mostrar el aprendizaje con una lección preparada y revisada antes.» |
-| No se puede leer la imagen. | Probar una vez la foto de reserva; si no funciona, usar la lección publicada. | «El docente necesita revisar la lectura. Utilizaremos material que ya está validado.» |
-| Falla Internet, pero sigue funcionando la wifi local. | Mantener el recorrido contra el servidor del aula. | «La wifi del aula conecta nuestros dispositivos; no necesita salida a Internet.» |
-| Falla también la conexión entre el móvil y el portátil. | Abrir la lección descargada y completar el test. Mantener pendientes las respuestas; no borrar almacenamiento ni reinstalar. | «El alumno puede continuar. Sus respuestas llegarán cuando vuelva a conectarse con el aula.» |
-| La red vuelve pero no se confirma el envío. | Esperar el siguiente intento; si sigue pendiente, enseñar el panel de datos ficticios claramente identificado. | «Este envío aún no se ha confirmado. Este panel contiene los datos de ejemplo; no vamos a presentarlos como resultados recién recibidos.» |
-| Falla el audio offline. | Usar «Leer», «Ejemplo» y «Test». | «La lectura en voz alta necesita una voz local instalada. Las demás actividades siguen disponibles.» |
-| El docente introduce mal el PIN cinco veces. | Esperar el minuto de bloqueo. Mientras tanto, continuar con el móvil y la lección descargada. | «El acceso del docente se bloquea temporalmente tras cinco fallos. El alumno conserva su material.» |
+| IA tarda o está apagada. | Usar una lección ya publicada y una duda de ejemplo contestada. No encadenar peticiones. | «Esta generación no ha terminado. El material y esta respuesta se prepararon antes.» |
+| La duda se envía pero no llega respuesta. | Mantener la app abierta; enseñar el estado pendiente. El profe puede responder mediante «Cambiar la respuesta» cuando la duda llegue al servidor. | «Estos fragmentos ya estaban en la lección. La respuesta de IA aún no ha llegado; el profe también puede contestar.» |
+| Falla Internet, permanece la wifi local con servidor accesible. | Continuar contra el ordenador local. | «La red del aula conecta los dispositivos sin necesitar Internet.» Si se usa un túnel público, este caso no aplica. |
+| Se pierde también la conexión al servidor. | Seguir leyendo, respondiendo y guardando dudas; mostrar fragmentos relacionados cuando la búsqueda local los encuentre. Conservar los datos del navegador. | «Las respuestas y preguntas se enviarán al volver a conectar.» |
+| No aparece confirmación de sincronización. | Esperar un nuevo intento; si no llega, mostrar pendientes reales y el panel de ejemplo identificado. | «Todavía no hemos confirmado este envío.» |
+| No funciona el audio. | Continuar con lectura, ejemplo y preguntas. | «Escuchar sin red necesita una voz local instalada.» |
+| PIN bloqueado tras cinco fallos. | Esperar un minuto y continuar mientras con el móvil preparado. | «El bloqueo temporal protege la clase del profe.» |
 
-## Arranque y comprobaciones técnicas antes del ensayo
+## Arranque y límites
 
-Los servidores los arranca una persona, en terminales separadas, desde la raíz del proyecto:
+[README del proyecto](../README.md) para instalación y arranque. [Ensayo de diez minutos](ensayo.md) para el móvil real.
 
-```sh
-cd api
-.venv/bin/uvicorn main:app --reload --port 8000
-```
+El service worker conserva las respuestas y dudas pendientes mediante el espejo local. La sincronización con la app cerrada depende del soporte y de cuándo el navegador permita ejecutarla: no garantizar un plazo. Para demostrar el envío de forma predecible, mantener la app abierta.
 
-```sh
-cd web
-npm run dev
-```
+El botón «Quitar de la clase» elimina matrícula, respuestas y dudas de esa clase; conserva la cuenta y las demás clases. No es una lista de bloqueo permanente: conservar el código puede permitir reinscribirse.
 
-La web de desarrollo está en http://localhost:5173. Para probar la reapertura offline en el portátil con la configuración actual, compilar y abrir preview:
+Antes de presentar, ejecutar las comprobaciones y confirmar la compilación. Dependencias sincronizadas con autorización de Fernando: comprobaciones de demo y panel y build de producción correctos. No arrancar servidores desde el agente ni afirmar que el móvil real está probado hasta completar ensayo.md.
 
-```sh
-cd web
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173
-```
+## Idioma de la interfaz, del contenido y de la voz
 
-Abrir http://localhost:4173 y mantener la API en el puerto 8000. En esta versión, preview hereda el proxy de `/api`. Esto no configura por sí solo el acceso HTTPS del móvil: prepararlo con Claude antes del evento.
+1. En la portada, elegir **Français** en el selector. «Soy estudiante» pasa a «Je suis élève». Entrar con «J'ai déjà un identifiant» y «Entrer», usando aula23ana y su contraseña de demo.
+2. Abrir **L'eau et ses états**, materia **Sciences**, de AULA23. En la lectura, pulsar **Écouter**. El contenido lleva `idioma: fr`; comprobar que la voz disponible es francesa. El idioma de la interfaz no debe convertir en francesa una lección española.
+3. Con esa lección descargada y una voz francesa local instalada, repetir sin red. Si falta la voz, demostrar la lectura y explicar la limitación; no inventar soporte de audio offline.
+4. Repetir con English y **The parts of a plant**, materia **Science**, si hay tiempo. Los títulos de las lecciones son contenido: no cambian al modificar el selector de portada.
+5. En «Nueva lección», el paso 4 selecciona el idioma del contenido. La API ya genera la lección en el idioma elegido y las dudas se contestan en el idioma de esa lección. Claude probó francés en 103 s; ensayar antes de generar en directo y conservar las lecciones manuales como plan B.
 
-El nuevo main ya está integrado. demo.py nombra las columnas de los INSERT, crea el PIN solo si falta y añade las cuentas de ejemplo solo si el alumno no tiene ya una. Usa las funciones de main para guardar las credenciales; repetir la carga no regenera sus sales ni restablece las contraseñas.
-
-Ejecutar desde la raíz:
-
-```sh
-api/.venv/bin/python api/demo.py --comprobar
-api/.venv/bin/python api/demo.py
-api/.venv/bin/python docs/comprobar_panel.py
-```
-
-Ensayar también que una petición sin autorización al panel devuelve 401 y que el panel abre desde una clase autorizada. Según la integración comunicada, main incluye su router con `dependencies=SOLO_PROFE`, y `api()` añade `X-Pin-Profe` desde `pines-profe`. El panel conserva `{codigo}` en su ruta y utiliza `api()`. Las clases antiguas sin PIN siguen abiertas hasta que se les asigne uno.
-
-## Ensayo adicional · dos alumnos, un mismo móvil
-
-1. Con conexión al aula, entrar con el primer alumno y descargar sus lecciones. Pulsar «Salir».
-2. En «¿Quién eres?», pulsar «Ya tengo usuario», entrar con el segundo alumno y descargar también su contenido. Pulsar «Salir».
-3. Desconectar wifi y datos. Elegir el perfil del primer alumno, escribir su contraseña y pulsar «Entrar». Leer y responder; comprobar su nombre y que no aparece el perfil del compañero.
-4. Pulsar «Salir» y repetir con el segundo perfil, todavía sin conexión. El acceso offline requiere que esa cuenta y su contenido ya se hayan guardado en ese aparato.
-5. Reconectar. Esperar «Todo enviado ✓» y comprobar en «Ver notas» las filas de ambos alumnos. Crear una cuenta por primera vez requiere conexión al aula.
-6. Si se quiere mostrar recuperación de acceso, hacerlo conectado y al final: «Nueva contraseña» junto al alumno en la vista del profe. Probar el nuevo acceso con red; no presentar el cambio como revocación inmediata de una copia offline.
-
-## Sincronización en segundo plano
-
-Se conservan `web/public/segundo-plano.js` y `workbox.importScripts` en `web/vite.config.js`. El service worker puede sincronizar pendientes y buscar novedades cuando el navegador admita esas capacidades y le permita ejecutarse. No prometer un plazo fijo con la app cerrada ni soporte universal. En navegadores sin soporte se usa la sincronización con la página abierta; mantenerla abierta para el recorrido principal.
+Francés e inglés están revisados por el equipo. Las demás traducciones son borradores automáticos; los textos faltantes intentan aparecer en inglés y luego en español. Las claves nuevas del panel ya están traducidas en los 23 idiomas; comprobar los rótulos en el móvil del ensayo.

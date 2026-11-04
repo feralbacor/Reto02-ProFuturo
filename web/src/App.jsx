@@ -5,9 +5,18 @@ import {
   COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
+import { t, plural, idioma, IDIOMAS, cambiarIdioma } from './idioma.js'
+import { buscar } from './tutorBuscar.js'
+
+// shortcut: libera los 150 MB del ayudante que se probó y se quitó (rama tutor-offline); se puede borrar cuando ningún móvil lo tenga.
+try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('ayudante') } catch { /* sin almacenamiento */ }
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+// La app instalada no recarga la página al volver a ella: al abrirla de nuevo o al volver la red, mira si hay versión nueva.
+const buscarVersion = () => navigator.serviceWorker?.getRegistration().then(r => r?.update()).catch(() => {})
+document.addEventListener('visibilitychange', () => { if (!document.hidden) buscarVersion() })
+window.addEventListener('online', buscarVersion)
 
 // Agrupa una lista de lecciones por materia, en el orden en que aparece cada materia.
 const porMateria = (lecciones, materiaDe) => {
@@ -20,10 +29,9 @@ const porMateria = (lecciones, materiaDe) => {
 }
 
 const pinValido = (pin) => /^\d{4,8}$/.test(pin)
-const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 
-function Volver({ onClick, disabled, children = 'Volver' }) {
-  return <button className="boton boton-fantasma volver" onClick={onClick} disabled={disabled}><Icono nombre="volver" />{children}</button>
+function Volver({ onClick, disabled, children }) {
+  return <button className="boton boton-fantasma volver" onClick={onClick} disabled={disabled}><Icono nombre="volver" />{children ?? t('Volver')}</button>
 }
 
 // ---------- Inicio ----------
@@ -31,6 +39,7 @@ function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
   const [vista, setVista] = useState(() => leer('profe-sesion', null) ? 'profe' : 'inicio')
   const [conectado, setConectado] = useState(null)
+  const [lengua, setLengua] = useState(idioma())
 
   useEffect(() => {
     api('/api/salud').then(() => setConectado(true)).catch(() => setConectado(false))
@@ -41,24 +50,30 @@ function App() {
 
   return (
     <div className="pagina">
-      <header className="cabecera"><span className="marca">Mochila</span></header>
-      <h1 className="titulo" style={{ marginTop: 20 }}>Aprende aunque <mark>no haya conexión</mark>.</h1>
-      <p className="frase">Las lecciones se quedan guardadas en el móvil. Tus respuestas le llegan a tu profe cuando vuelve la red.</p>
+      <header className="cabecera">
+        <span className="marca">Mochila</span>
+        <select aria-label="Idioma · Language · Langue" className="campo selector-idioma" value={lengua}
+          onChange={e => { cambiarIdioma(e.target.value); setLengua(e.target.value) }}>
+          {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
+        </select>
+      </header>
+      <h1 className="titulo" style={{ marginTop: 20 }}>{t('Aprende aunque')} <mark>{t('no haya conexión')}</mark>.</h1>
+      <p className="frase">{t('Las lecciones se quedan guardadas en el móvil. Tus respuestas le llegan a tu profe cuando vuelve la red.')}</p>
 
       <div className="botones" style={{ marginTop: 32 }}>
         <button className="eleccion eleccion-principal" onClick={() => setVista('alumno')}>
-          <span><span className="eleccion-titulo">Soy estudiante</span><span className="eleccion-detalle">Mis lecciones y mis preguntas</span></span>
+          <span><span className="eleccion-titulo">{t('Soy estudiante')}</span><span className="eleccion-detalle">{t('Mis lecciones y mis preguntas')}</span></span>
           <Icono nombre="seguir" tam={30} className="icono-final" />
         </button>
         <button className="eleccion" onClick={() => setVista('profe')}>
-          <span><span className="eleccion-titulo">Soy profe</span><span className="eleccion-detalle">Crear clases y lecciones</span></span>
+          <span><span className="eleccion-titulo">{t('Soy profe')}</span><span className="eleccion-detalle">{t('Crear clases y lecciones')}</span></span>
           <Icono nombre="seguir" tam={30} className="icono-final" />
         </button>
       </div>
 
       <p className="nota" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 28 }}>
         <span className="punto" style={{ background: conectado ? COLOR.verde : conectado === false ? COLOR.suave : COLOR.amarillo }} />
-        {conectado === null ? 'Buscando el ordenador de la clase…' : conectado ? 'Conectado con el ordenador de la clase' : 'Sin conexión: puedes usar lo que ya está descargado'}
+        {conectado === null ? t('Buscando el ordenador de la clase…') : conectado ? t('Conectado con el ordenador de la clase') : t('Sin conexión: puedes usar lo que ya está descargado')}
       </p>
     </div>
   )
@@ -128,7 +143,7 @@ async function prepararLeccion(item, alAvanzar) {
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', id: item.id } })
 }
 
 let preparandoPendientes = false
@@ -225,33 +240,33 @@ function ProfeEntrar({ onEntrar, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} /></header>
-      <h1 className="titulo">{nueva ? 'Crear mi cuenta de profe' : 'Entrar como profe'}</h1>
-      <p className="frase">{nueva ? 'Con tu cuenta verás todas tus clases en cualquier móvil o tablet.' : 'Escribe tu usuario y tu contraseña para ver tus clases.'}</p>
+      <h1 className="titulo">{nueva ? t('Crear mi cuenta de profe') : t('Entrar como profe')}</h1>
+      <p className="frase">{nueva ? t('Con tu cuenta verás todas tus clases en cualquier móvil o tablet.') : t('Escribe tu usuario y tu contraseña para ver tus clases.')}</p>
       <form onSubmit={enviar} className="formulario" style={{ marginTop: 24 }}>
         {nueva && (
           <div className="campo-grupo">
-            <label htmlFor="profe-nombre" className="etiqueta">Tu nombre</label>
+            <label htmlFor="profe-nombre" className="etiqueta">{t('Tu nombre')}</label>
             <input id="profe-nombre" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} autoComplete="name" />
           </div>
         )}
         <div className="campo-grupo">
-          <label htmlFor="profe-usuario" className="etiqueta">Usuario</label>
+          <label htmlFor="profe-usuario" className="etiqueta">{t('Usuario')}</label>
           <input id="profe-usuario" className="campo" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
             autoCapitalize="off" autoComplete="username" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
-          {nueva && <p className="pista">Solo letras y números, sin espacios.</p>}
+          {nueva && <p className="pista">{t('Solo letras y números, sin espacios.')}</p>}
         </div>
         <div className="campo-grupo">
-          <label htmlFor="profe-contrasena" className="etiqueta">Contraseña</label>
+          <label htmlFor="profe-contrasena" className="etiqueta">{t('Contraseña')}</label>
           <CampoContrasena id="profe-contrasena" valor={contrasena} onCambio={setContrasena} nueva={nueva} />
-          {nueva && <p className="pista">Al menos 4 letras o números.</p>}
+          {nueva && <p className="pista">{t('Al menos 4 letras o números.')}</p>}
         </div>
         <Aviso texto={error} />
         <button type="submit" disabled={enviando || (nueva && !nombre.trim()) || !usuarioValido(usuario) || contrasena.length < 4} className="boton boton-principal boton-ancho boton-grande">
-          {enviando ? 'Un momento…' : nueva ? 'Crear y entrar' : 'Entrar'}
+          {enviando ? t('Un momento…') : nueva ? t('Crear y entrar') : t('Entrar')}
         </button>
       </form>
       <button onClick={() => { setNueva(!nueva); setError('') }} className="boton boton-secundario boton-ancho" style={{ marginTop: 16 }}>
-        {nueva ? 'Ya tengo cuenta' : 'Crear mi cuenta de profe'}
+        {nueva ? t('Ya tengo cuenta') : t('Crear mi cuenta de profe')}
       </button>
     </div>
   )
@@ -306,13 +321,13 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     <div className="pagina">
       <header className="cabecera">
         <span className="marca">Mochila</span>
-        <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />Salir</button>
+        <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />{t('Salir')}</button>
       </header>
-      <h1 className="titulo">Hola, {profe.nombre}</h1>
-      <p className="frase">Estas son tus clases. Cada una tiene un código: tus alumnos lo escriben para entrar.</p>
+      <h1 className="titulo">{t('Hola, {nombre}', { nombre: profe.nombre })}</h1>
+      <p className="frase">{t('Estas son tus clases. Cada una tiene un código: tus alumnos lo escriben para entrar.')}</p>
 
       <Aviso texto={error} />
-      {clases === null && <Cargando texto="Cargando tus clases…" />}
+      {clases === null && <Cargando texto={t('Cargando tus clases…')} />}
       {hay && (
         <div className="lista" style={{ marginTop: 24 }}>
           {clases.map(c => (
@@ -321,8 +336,8 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
                 <span className="fila-titulo">{c.nombre}</span>
                 <span className="fila-detalle">
                   <span className="insignia" style={{ fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>{c.codigo}</span>
-                  {plural(c.alumnos, 'alumno', 'alumnos')} · {plural(c.lecciones, 'lección', 'lecciones')}
-                  {pendientes.some(p => p.codigo === c.codigo) && ` · ${plural(pendientes.filter(p => p.codigo === c.codigo).length, 'por preparar', 'por preparar')}`}
+                  {plural(c.alumnos, '{n} alumno', '{n} alumnos')} · {plural(c.lecciones, '{n} lección', '{n} lecciones')}
+                  {pendientes.some(p => p.codigo === c.codigo) && ` · ${t('{n} por preparar', { n: pendientes.filter(p => p.codigo === c.codigo).length })}`}
                 </span>
               </span>
               <Icono nombre="seguir" className="icono-final" />
@@ -332,32 +347,32 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
       )}
 
       <section className="seccion">
-        <h2 className="seccion-titulo">{hay ? 'Crear otra clase' : 'Crea tu primera clase'}</h2>
+        <h2 className="seccion-titulo">{hay ? t('Crear otra clase') : t('Crea tu primera clase')}</h2>
         <form onSubmit={crear} className="tarjeta formulario">
           <div className="campo-grupo">
-            <label htmlFor="nombre-clase" className="etiqueta">Nombre de la clase</label>
-            <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder="Por ejemplo: 5.º A · Ciencias" />
+            <label htmlFor="nombre-clase" className="etiqueta">{t('Nombre de la clase')}</label>
+            <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder={t('Por ejemplo: 5.º A · Ciencias')} />
           </div>
           <button type="submit" disabled={!nombre.trim() || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
-            {creando ? 'Creando…' : 'Crear la clase'}
+            {creando ? t('Creando…') : t('Crear la clase')}
           </button>
         </form>
       </section>
 
       <details className="seccion">
-        <summary className="seccion-titulo" style={{ cursor: 'pointer' }}>¿Tienes una clase de antes, con PIN?</summary>
+        <summary className="seccion-titulo" style={{ cursor: 'pointer' }}>{t('¿Tienes una clase de antes, con PIN?')}</summary>
         <form onSubmit={traer} className="tarjeta formulario" style={{ marginTop: 12 }}>
           <div className="campo-grupo">
-            <label htmlFor="codigo-traer" className="etiqueta">Código de la clase</label>
+            <label htmlFor="codigo-traer" className="etiqueta">{t('Código de la clase')}</label>
             <input id="codigo-traer" className="campo campo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
               autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
           </div>
           <div className="campo-grupo">
-            <label htmlFor="pin-traer" className="etiqueta">El PIN de esa clase</label>
+            <label htmlFor="pin-traer" className="etiqueta">{t('El PIN de esa clase')}</label>
             <input id="pin-traer" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={8}
               value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
-          <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin)} className="boton boton-secundario boton-ancho">Añadirla a mis clases</button>
+          <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin)} className="boton boton-secundario boton-ancho">{t('Añadirla a mis clases')}</button>
         </form>
       </details>
     </div>
@@ -400,24 +415,24 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
 
   // Si un alumno olvida su contraseña, el profe le pone otra y se la dice (sin email: no todos tienen).
   const nuevaContrasena = async (a) => {
-    const nueva = window.prompt(`Nueva contraseña para ${a.nombre} (al menos 4 letras o números):`)
+    const nueva = window.prompt(t('Nueva contraseña para {nombre} (al menos 4 letras o números):', { nombre: a.nombre }))
     if (nueva === null) return
     try {
       await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${a.id}/contrasena`, { method: 'PUT', body: { contrasena: nueva } })
-      window.alert(`Listo. Dile a ${a.nombre} su usuario («${a.usuario}») y su nueva contraseña. La primera vez tendrá que entrar con conexión.`)
+      window.alert(t('Listo. Dile a {nombre} su usuario («{usuario}») y su nueva contraseña. La primera vez tendrá que entrar con conexión.', { nombre: a.nombre, usuario: a.usuario }))
     } catch (e) {
-      window.alert(e.message)
+      window.alert(t(e.message))
     }
   }
 
   const cambiarRespuesta = async (d) => {
-    const nueva = window.prompt(`Tu respuesta a «${d.pregunta}»:`, d.respuesta || '')
+    const nueva = window.prompt(t('Tu respuesta a «{pregunta}»:', { pregunta: d.pregunta }), d.respuesta || '')
     if (!nueva?.trim()) return
     try {
       await api(`/api/clases/${encodeURIComponent(codigo)}/dudas/${d.id}`, { method: 'PUT', body: { respuesta: nueva } })
       cargar()
     } catch (e) {
-      window.alert(e.message)
+      window.alert(t(e.message))
     }
   }
 
@@ -431,7 +446,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
   // La lección entera ya viene con la clase: se abre también sin conexión.
   const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
   const quitarPendiente = (p) => {
-    if (window.confirm('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.')) {
+    if (window.confirm(t('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.'))) {
       guardarPendientesProfe(leerPendientesProfe().filter(x => x.id !== p.id))
     }
   }
@@ -439,9 +454,9 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
   if (pidePin) {
     return (
       <div className="pagina">
-        <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
-        <h1 className="titulo">Abrir la clase</h1>
-        <p className="frase">Escribe tu PIN de profe de la clase <strong style={{ fontFamily: 'var(--mono)' }}>{codigo}</strong>.</p>
+        <header className="cabecera"><Volver onClick={onVolver}>{t('Mis clases')}</Volver></header>
+        <h1 className="titulo">{t('Abrir la clase')}</h1>
+        <p className="frase">{t('Escribe tu PIN de profe de la clase')} <strong style={{ fontFamily: 'var(--mono)' }}>{codigo}</strong>.</p>
         <form onSubmit={entrarConPin} className="formulario" style={{ marginTop: 24 }}>
           <div className="campo-grupo">
             <label htmlFor="pin-entrar" className="etiqueta">PIN</label>
@@ -449,7 +464,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
               value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
           <Aviso texto={intentado ? error : ''} />
-          <button type="submit" disabled={!pinValido(pin)} className="boton boton-principal boton-ancho boton-grande">Abrir la clase</button>
+          <button type="submit" disabled={!pinValido(pin)} className="boton boton-principal boton-ancho boton-grande">{t('Abrir la clase')}</button>
         </form>
       </div>
     )
@@ -458,42 +473,42 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
   if (!clase) {
     return (
       <div className="pagina">
-        <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
-        {error ? <Aviso texto={error} /> : <Cargando texto="Cargando la clase…" />}
+        <header className="cabecera"><Volver onClick={onVolver}>{t('Mis clases')}</Volver></header>
+        {error ? <Aviso texto={error} /> : <Cargando texto={t('Cargando la clase…')} />}
       </div>
     )
   }
 
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
+      <header className="cabecera"><Volver onClick={onVolver}>{t('Mis clases')}</Volver></header>
       <h1 className="titulo">{clase.nombre}</h1>
 
       <div className="codigo-clase" style={{ marginTop: 20 }}>
-        <span className="nota" style={{ margin: 0 }}>Código para que entren tus alumnos</span>
+        <span className="nota" style={{ margin: 0 }}>{t('Código para que entren tus alumnos')}</span>
         <span className="codigo-clase-texto">{clase.codigo}</span>
       </div>
 
       <Aviso texto={error} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
-        <button onClick={onNueva} className="boton boton-principal boton-grande"><Icono nombre="mas" />Nueva lección</button>
-        <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />Ver notas</button>
+        <button onClick={onNueva} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
+        <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />{t('Ver notas')}</button>
       </div>
 
       {pendientes.length > 0 && (
         <section className="seccion">
-          <h2 className="seccion-titulo">Por preparar ({pendientes.length})</h2>
-          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Se prepararán solas cuando haya conexión con el ordenador de la clase y su IA (Ollama) esté encendida. Después las revisas y las publicas.</p>
+          <h2 className="seccion-titulo">{t('Por preparar ({n})', { n: pendientes.length })}</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Se prepararán solas cuando haya conexión con el ordenador de la clase y su IA (Ollama) esté encendida. Después las revisas y las publicas.')}</p>
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
-                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto o archivo', 'fotos o archivos') : 'texto'}</p>
-                <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || 'Sin texto todavía'}</p>
-                {p.error && <Aviso texto={`No se ha podido preparar: ${p.error}`} />}
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{t(p.materia || 'General')} · {p.fotos.length ? plural(p.fotos.length, '{n} foto o archivo', '{n} fotos o archivos') : t('texto')}</p>
+                <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || t('Sin texto todavía')}</p>
+                {p.error && <Aviso texto={t('No se ha podido preparar: {error}', { error: t(p.error) })} />}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
-                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">Editar</button>
-                  <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">Quitar</button>
+                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Editar')}</button>
+                  <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Quitar')}</button>
                 </div>
               </div>
             ))}
@@ -502,17 +517,17 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       )}
 
       <section className="seccion">
-        <h2 className="seccion-titulo">Lecciones</h2>
-        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.</p>}
+        <h2 className="seccion-titulo">{t('Lecciones')}</h2>
+        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
         {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
           <div key={materia}>
-            <h3 className="subtitulo">{materia}</h3>
+            <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
               {lecciones.map(l => (
                 <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
                   <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
-                  {l.cambio && <span className="insignia">{l.cambio.error ? 'Error al guardar' : 'Sin enviar'}</span>}
-                  <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? 'Publicada' : 'Borrador'}</span>
+                  {l.cambio && <span className="insignia">{l.cambio.error ? t('Error al guardar') : t('Sin enviar')}</span>}
+                  <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
                   <Icono nombre="seguir" className="icono-final" />
                 </button>
               ))}
@@ -523,18 +538,18 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
 
       {clase.dudas?.length > 0 && (
         <section className="seccion">
-          <h2 className="seccion-titulo">Dudas de tus alumnos</h2>
-          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Las contesta Mochila con lo que dice la lección. Si una respuesta no te convence, cámbiala: le llegará al alumno.</p>
+          <h2 className="seccion-titulo">{t('Dudas de tus alumnos')}</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Las contesta Mochila con lo que dice la lección. Si una respuesta no te convence, cámbiala: le llegará al alumno.')}</p>
           {clase.dudas.map(d => (
             <div key={d.id} className="tarjeta duda">
               <p className="nota" style={{ marginTop: 0, marginBottom: 6 }}>{d.alumno} · {d.leccion} · {cuando(d.fecha)}</p>
               <p className="duda-pregunta">{d.pregunta}</p>
               {d.respuesta
-                ? <p className="duda-respuesta">{d.respuesta}</p>
-                : <p className="nota">Mochila todavía no la ha contestado.</p>}
+                ? <p className="duda-respuesta">{t(d.respuesta)}</p>
+                : <p className="nota">{t('Mochila todavía no la ha contestado.')}</p>}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
-                {d.corregida ? <span className="insignia insignia-verde">Contestada por ti</span> : null}
-                <button onClick={() => cambiarRespuesta(d)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Cambiar la respuesta</button>
+                {d.corregida ? <span className="insignia insignia-verde">{t('Contestada por ti')}</span> : null}
+                <button onClick={() => cambiarRespuesta(d)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>{t('Cambiar la respuesta')}</button>
               </div>
             </div>
           ))}
@@ -542,18 +557,18 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       )}
 
       <section className="seccion">
-        <h2 className="seccion-titulo">Alumnos ({clase.alumnos.length})</h2>
+        <h2 className="seccion-titulo">{t('Alumnos ({n})', { n: clase.alumnos.length })}</h2>
         {clase.alumnos.length === 0
-          ? <p className="frase" style={{ marginTop: 0 }}>Todavía no ha entrado nadie. Diles el código de arriba.</p>
+          ? <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no ha entrado nadie. Diles el código de arriba.')}</p>
           : (
             <div className="tarjeta" style={{ padding: '2px 16px' }}>
               {clase.alumnos.map(a => (
                 <div key={a.id} className="alumno-fila">
                   <span>
                     <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
-                    {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>Usuario: {a.usuario}</span>}
+                    {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
                   </span>
-                  {a.usuario && <button onClick={() => nuevaContrasena(a)} className="boton boton-secundario boton-pequeno">Nueva contraseña</button>}
+                  {a.usuario && <button onClick={() => nuevaContrasena(a)} className="boton boton-secundario boton-pequeno">{t('Nueva contraseña')}</button>}
                 </div>
               ))}
             </div>
@@ -579,6 +594,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   const [titulo, setTitulo] = useState(inicial?.titulo || '')
   const [materias, setMaterias] = useState([])
   const [ia, setIa] = useState(null)
+  const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
 
   useEffect(() => {
     // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
@@ -619,8 +635,10 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
     const lista = fotos
     try {
       for (let i = 0; i < lista.length; i++) {
-        const que = esImagen(lista[i].datos) ? 'la foto' : `«${lista[i].nombre}»`
-        setOcupado(lista.length > 1 ? `Leyendo ${que} (${i + 1} de ${lista.length})…` : `Leyendo ${que}…`)
+        const nombre = lista[i].nombre
+        setOcupado(esImagen(lista[i].datos)
+          ? (lista.length > 1 ? t('Leyendo la foto {i} de {n}…', { i: i + 1, n: lista.length }) : t('Leyendo la foto…'))
+          : t('Leyendo «{nombre}»…', { nombre }))
         const r = await leerAdjunto(codigo, lista[i].datos)
         setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + r.texto)
         setFotos(f => f.filter(x => x.id !== lista[i].id))
@@ -636,9 +654,9 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
+    setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
-    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
+    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
@@ -660,8 +678,8 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
         return
       }
       window.alert(e.message === SIN_CONEXION
-        ? 'Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.'
-        : `${e.message} La lección queda guardada y se preparará sola cuando la IA esté lista.`)
+        ? t('Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.')
+        : `${t(e.message)} ${t('La lección queda guardada y se preparará sola cuando la IA esté lista.')}`)
       onVolver()
     }
   }
@@ -671,28 +689,28 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
 
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>La clase</Volver></header>
-      <h1 className="titulo">{inicial ? 'Lección por preparar' : 'Nueva lección'}</h1>
-      <p className="frase">Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.</p>
+      <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>{t('La clase')}</Volver></header>
+      <h1 className="titulo">{inicial ? t('Lección por preparar') : t('Nueva lección')}</h1>
+      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.')}</p>
       {ia === 'apagada' && (
-        <p className="aviso aviso-atencion"><strong>La lectura de fotos está apagada</strong>Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.</p>
+        <p className="aviso aviso-atencion"><strong>{t('La lectura de fotos está apagada')}</strong>{t('Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.')}</p>
       )}
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">1</span><label htmlFor="titulo-leccion">El título</label></h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">1</span><label htmlFor="titulo-leccion">{t('El título')}</label></h2>
         <input id="titulo-leccion" className="campo" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120}
-          placeholder="Por ejemplo: Las ecuaciones" disabled={!!ocupado} />
-        <p className="pista">Si lo dejas vacío, Mochila le pone uno.</p>
+          placeholder={t('Por ejemplo: Las ecuaciones')} disabled={!!ocupado} />
+        <p className="pista">{t('Si lo dejas vacío, Mochila le pone uno.')}</p>
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>Las fotos o los archivos</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Las fotos o los archivos')}</h2>
         <div className="botones-fila">
-          <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />Hacer una foto</button>
-          <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />Elegir fotos</button>
-          <button onClick={() => documento.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="archivo" />Subir un archivo</button>
+          <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />{t('Hacer una foto')}</button>
+          <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />{t('Elegir fotos')}</button>
+          <button onClick={() => documento.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="archivo" />{t('Subir un archivo')}</button>
         </div>
-        <p className="pista">Hasta {MAX_FOTOS}. Fotos de la página (que se vea entera y con buena luz), o un PDF, Word, PowerPoint, LibreOffice o texto.</p>
+        <p className="pista">{t('Hasta {n}. Fotos de la página (que se vea entera y con buena luz), o un PDF, Word, PowerPoint, LibreOffice o texto.', { n: MAX_FOTOS })}</p>
         <input ref={camara} type="file" accept="image/*" capture="environment" onChange={alElegir} hidden />
         <input ref={galeria} type="file" accept="image/*" multiple onChange={alElegir} hidden />
         <input ref={documento} type="file" multiple onChange={alElegir} hidden
@@ -704,15 +722,16 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
               {fotos.map((f, i) => (
                 <div key={f.id} className="tarjeta foto">
                   {esImagen(f.datos)
-                    ? <img src={f.datos} alt={`Foto ${i + 1}`} />
+                    ? <img src={f.datos} alt={t('Foto {n}', { n: i + 1 })} />
                     : <p className="fila-titulo" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 4px', wordBreak: 'break-word' }}><Icono nombre="archivo" />{f.nombre}</p>}
-                  <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado} className="boton boton-fantasma boton-ancho">Quitar</button>
+                  <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado} className="boton boton-fantasma boton-ancho">{t('Quitar')}</button>
                 </div>
               ))}
             </div>
             <button onClick={leerFotos} disabled={!!ocupado} className="boton boton-principal boton-ancho" style={{ marginTop: 16 }}>
-              {!fotos.every(f => esImagen(f.datos)) ? `Leer ${fotos.length === 1 ? 'el archivo' : `los ${fotos.length} archivos`}`
-                : `Leer ${fotos.length === 1 ? 'la foto' : `las ${fotos.length} fotos`}`}
+              {!fotos.every(f => esImagen(f.datos))
+                ? (fotos.length === 1 ? t('Leer el archivo') : t('Leer los {n} archivos', { n: fotos.length }))
+                : (fotos.length === 1 ? t('Leer la foto') : t('Leer las {n} fotos', { n: fotos.length }))}
             </button>
           </>
         )}
@@ -720,27 +739,34 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? 'Revisa el texto' : 'El texto'}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
         <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
-          {leidas ? 'Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.' : 'Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.'}
+          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
         </label>
         <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
-          placeholder="El texto de la página del libro…" />
-        {!suficiente && texto.trim() && <p className="pista">Hace falta un poco más de texto: al menos un par de frases.</p>}
+          placeholder={t('El texto de la página del libro…')} />
+        {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span>La materia</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('La materia')}</h2>
         <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
-          placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} aria-label="Materia" />
+          placeholder={t('Por ejemplo: Ciencias')} disabled={!!ocupado} aria-label={t('Materia')} />
         <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
       </section>
 
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
+        <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
+          {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
+        </select>
+        <p className="pista">{t('Mochila escribe la lección en este idioma, aunque el libro esté en otro.')}</p>
+      </section>
 
       <Aviso texto={error} />
       {!leyendo && espera}
       <div className="acciones-pie" style={{ marginTop: 28 }}>
-        <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">Preparar la lección</button>
+        <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
       </div>
     </div>
   )
@@ -772,7 +798,7 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
       if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
       if (publicar) setPublicada(true)
       setAviso({
-        texto: publicar ? 'Publicada. Tus alumnos la tendrán la próxima vez que se conecten.' : 'Guardado.',
+        texto: publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'),
         color: COLOR.verde,
       })
     } catch (e) {
@@ -794,49 +820,49 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={onVolver}>La clase</Volver>
-        {publicada && <span className="insignia insignia-verde">Publicada</span>}
+        <Volver onClick={onVolver}>{t('La clase')}</Volver>
+        {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
-      <h1 className="titulo">{publicada ? 'Lección publicada' : 'Revisa la lección'}</h1>
+      <h1 className="titulo">{publicada ? t('Lección publicada') : t('Revisa la lección')}</h1>
       <p className="frase">{publicada
-        ? 'Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.'
-        : 'Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.'}</p>
+        ? t('Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.')
+        : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
 
       <div className="formulario" style={{ marginTop: 28 }}>
         <div className="campo-grupo">
-          <label htmlFor="r-titulo" className="etiqueta">Título</label>
+          <label htmlFor="r-titulo" className="etiqueta">{t('Título')}</label>
           <input id="r-titulo" className="campo" value={leccion.titulo} onChange={e => cambiar('titulo', e.target.value)} />
         </div>
         <div className="campo-grupo">
-          <label htmlFor="r-materia" className="etiqueta">Materia</label>
-          <input id="r-materia" className="campo" value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder="General" />
+          <label htmlFor="r-materia" className="etiqueta">{t('Materia')}</label>
+          <input id="r-materia" className="campo" value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder={t('General')} />
         </div>
         <div className="campo-grupo">
-          <label htmlFor="r-lectura" className="etiqueta">Lectura fácil</label>
+          <label htmlFor="r-lectura" className="etiqueta">{t('Lectura fácil')}</label>
           {area('r-lectura', 'lectura_facil', 8)}
         </div>
         <div className="campo-grupo">
-          <label htmlFor="r-ejemplo" className="etiqueta">Un ejemplo</label>
+          <label htmlFor="r-ejemplo" className="etiqueta">{t('Un ejemplo')}</label>
           {area('r-ejemplo', 'explicacion_ejemplo', 5)}
         </div>
       </div>
 
       <section className="seccion">
-        <h2 className="seccion-titulo">Las preguntas</h2>
-        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.</p>
+        <h2 className="seccion-titulo">{t('Las preguntas')}</h2>
+        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')}</p>
         {leccion.preguntas.map((p, i) => (
           <fieldset key={i} className="tarjeta" style={{ marginBottom: 16 }}>
-            <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>Pregunta {i + 1}</legend>
-            <input className="campo" value={p.pregunta} onChange={e => cambiarPregunta(i, { pregunta: e.target.value })} aria-label={`Pregunta ${i + 1}`}
+            <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta {n}', { n: i + 1 })}</legend>
+            <input className="campo" value={p.pregunta} onChange={e => cambiarPregunta(i, { pregunta: e.target.value })} aria-label={t('Pregunta {n}', { n: i + 1 })}
               style={{ marginBottom: 14, fontWeight: 650 }} />
             {p.opciones.map((o, k) => (
               <div key={k} className={`opcion-editar ${p.correcta === k ? 'opcion-editar-buena' : ''}`}>
                 <input type="radio" name={`correcta-${i}`} checked={p.correcta === k} onChange={() => cambiarPregunta(i, { correcta: k })}
-                  aria-label={`La opción ${'ABCD'[k]} es la buena`} />
-                <input className="campo" value={o} onChange={e => cambiarOpcion(i, k, e.target.value)} aria-label={`Opción ${'ABCD'[k]}`} />
+                  aria-label={t('La opción {letra} es la buena', { letra: 'ABCD'[k] })} />
+                <input className="campo" value={o} onChange={e => cambiarOpcion(i, k, e.target.value)} aria-label={t('Opción {letra}', { letra: 'ABCD'[k] })} />
               </div>
             ))}
-            <label htmlFor={`porque-${i}`} className="etiqueta" style={{ marginTop: 14, fontSize: 16 }}>Por qué es la buena</label>
+            <label htmlFor={`porque-${i}`} className="etiqueta" style={{ marginTop: 14, fontSize: 16 }}>{t('Por qué es la buena')}</label>
             <input id={`porque-${i}`} className="campo" value={p.porque} onChange={e => cambiarPregunta(i, { porque: e.target.value })} style={{ fontSize: 18 }} />
           </fieldset>
         ))}
@@ -846,11 +872,11 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
       <div className="acciones-pie">
         <div className="botones-fila">
           {publicada
-            ? <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? 'Guardando…' : 'Guardar los cambios'}</button>
+            ? <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? t('Guardando…') : t('Guardar los cambios')}</button>
             : (
               <>
-                <button onClick={() => enviar(false)} disabled={guardando} className="boton boton-secundario">Guardar sin publicar</button>
-                <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? 'Publicando…' : 'Publicar'}</button>
+                <button onClick={() => enviar(false)} disabled={guardando} className="boton boton-secundario">{t('Guardar sin publicar')}</button>
+                <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? t('Publicando…') : t('Publicar')}</button>
               </>
             )}
         </div>
@@ -862,13 +888,13 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
 // ---------- Estudiante ----------
 // Una línea fija arriba: dice si las respuestas guardadas en el móvil ya han llegado al profe.
 function BarraEnvio({ estado, pendientes }) {
-  const n = plural(pendientes, 'respuesta', 'respuestas')
+  const n = plural(pendientes, '{n} respuesta', '{n} respuestas')
   const [clase, texto] =
-    estado === 'enviando' ? ['estado-enviando', pendientes ? `Enviando ${n}…` : 'Buscando lecciones nuevas…']
-      : estado === 'sin-conexion' ? ['', pendientes ? `Sin conexión · ${n} por enviar` : 'Sin conexión · tus lecciones funcionan igual']
-        : estado === 'error' ? ['estado-error', `No se ha podido enviar · ${n} por enviar · se reintentará solo`]
-          : pendientes ? ['estado-pendiente', `${n} por enviar`]
-            : ['estado-ok', 'Todo enviado a tu profe']
+    estado === 'enviando' ? ['estado-enviando', pendientes ? t('Enviando {n}…', { n }) : t('Buscando lecciones nuevas…')]
+      : estado === 'sin-conexion' ? ['', pendientes ? t('Sin conexión · {n} por enviar', { n }) : t('Sin conexión · tus lecciones funcionan igual')]
+        : estado === 'error' ? ['estado-error', t('No se ha podido enviar · {n} por enviar · se reintentará solo', { n })]
+          : pendientes ? ['estado-pendiente', t('{n} por enviar', { n })]
+            : ['estado-ok', t('Todo enviado a tu profe')]
   return <div role="status" className={`estado ${clase}`}><span className="punto" />{texto}</div>
 }
 
@@ -886,9 +912,9 @@ function useAppGuardada() {
 
 const cuando = (iso) => {
   const d = new Date(iso)
-  const hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-  return d.toDateString() === new Date().toDateString() ? `hoy a las ${hora}`
-    : `el ${d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })} a las ${hora}`
+  const hora = d.toLocaleTimeString(idioma(), { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? t('hoy a las {hora}', { hora })
+    : t('el {dia} a las {hora}', { dia: d.toLocaleDateString(idioma(), { day: 'numeric', month: 'long' }), hora })
 }
 
 // Círculo verde con la flecha hacia abajo: «esto ya está en el móvil».
@@ -903,16 +929,16 @@ function IconoDescargado({ tam = 22 }) {
 
 function ResumenDescargado({ lecciones, appGuardada, actualizado }) {
   if (appGuardada === null) {
-    return <p className="aviso aviso-atencion"><strong>Sin conexión, la app no se abrirá</strong>Este navegador no puede guardarla. Entra con el enlace https que te dé tu profe.</p>
+    return <p className="aviso aviso-atencion"><strong>{t('Sin conexión, la app no se abrirá')}</strong>{t('Este navegador no puede guardarla. Entra con el enlace https que te dé tu profe.')}</p>
   }
   return (
     <div className="frase" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
       {appGuardada ? <IconoDescargado tam={26} /> : <span className="ruedita" style={{ width: 24, height: 24, borderWidth: 3, flexShrink: 0 }} />}
       <span>
         {appGuardada
-          ? `Tienes ${plural(lecciones, 'lección guardada', 'lecciones guardadas')} en este móvil. Funcionan sin conexión.`
-          : 'Guardando la app en este móvil… Espera un momento antes de quedarte sin conexión.'}
-        {actualizado && <span className="nota" style={{ display: 'block', marginTop: 4 }}>Lecciones nuevas buscadas {cuando(actualizado)}.</span>}
+          ? t('Tienes {n} en este móvil. Funcionan sin conexión.', { n: plural(lecciones, '{n} lección guardada', '{n} lecciones guardadas') })
+          : t('Guardando la app en este móvil… Espera un momento antes de quedarte sin conexión.')}
+        {actualizado && <span className="nota" style={{ display: 'block', marginTop: 4 }}>{t('Lecciones nuevas buscadas {cuando}.', { cuando: cuando(actualizado) })}</span>}
       </span>
     </div>
   )
@@ -947,7 +973,7 @@ function CampoContrasena({ id, valor, onCambio, nueva = false, autoFocus = false
       <input id={id} className="campo" type={ver ? 'text' : 'password'} value={valor} onChange={e => onCambio(e.target.value)} maxLength={64} autoFocus={autoFocus}
         autoComplete={nueva ? 'new-password' : 'off'} autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
       <button type="button" onClick={() => setVer(!ver)} aria-pressed={ver} className="boton boton-secundario boton-pequeno" style={{ minHeight: 56 }}>
-        {ver ? 'Ocultar' : 'Ver'}
+        {ver ? t('Ocultar') : t('Ver')}
       </button>
     </div>
   )
@@ -956,10 +982,10 @@ function CampoContrasena({ id, valor, onCambio, nueva = false, autoFocus = false
 function CampoCodigo({ valor, onCambio }) {
   return (
     <div className="campo-grupo">
-      <label htmlFor="codigo-clase" className="etiqueta">Código de la clase</label>
+      <label htmlFor="codigo-clase" className="etiqueta">{t('Código de la clase')}</label>
       <input id="codigo-clase" className="campo campo-codigo" value={valor} onChange={e => onCambio(e.target.value.toUpperCase())} maxLength={12}
         autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
-      <p className="pista">Son 6 letras y números. Te lo dice tu profe.</p>
+      <p className="pista">{t('Son 6 letras y números. Te lo dice tu profe.')}</p>
     </div>
   )
 }
@@ -985,15 +1011,15 @@ function AlumnoQuienEres({ onEntrar, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} /></header>
-      <h1 className="titulo">¿Quién eres?</h1>
-      <p className="frase">{hay ? 'Toca tu nombre.' : 'Crea tu usuario para empezar. Si ya tienes uno, entra con él.'}</p>
+      <h1 className="titulo">{t('¿Quién eres?')}</h1>
+      <p className="frase">{hay ? t('Toca tu nombre.') : t('Crea tu usuario para empezar. Si ya tienes uno, entra con él.')}</p>
 
       {hay && (
         <div className="lista" style={{ marginTop: 24 }}>
           {antiguo?.nombre && (
             <button onClick={() => setVista('antiguo')} className="fila fila-toca">
               <Avatar nombre={antiguo.nombre} />
-              <span className="fila-texto"><span className="fila-titulo">{antiguo.nombre}</span><span className="fila-detalle">Ponle usuario y contraseña para seguir</span></span>
+              <span className="fila-texto"><span className="fila-titulo">{antiguo.nombre}</span><span className="fila-detalle">{t('Ponle usuario y contraseña para seguir')}</span></span>
               <Icono nombre="seguir" className="icono-final" />
             </button>
           )}
@@ -1008,10 +1034,10 @@ function AlumnoQuienEres({ onEntrar, onVolver }) {
       )}
 
       <div className={hay ? 'botones-fila' : 'botones'} style={{ marginTop: 28 }}>
-        <button onClick={() => setVista('nuevo')} className={`boton ${hay ? 'boton-secundario' : 'boton-principal boton-grande'}`}><Icono nombre="mas" />Crear mi usuario</button>
-        <button onClick={() => setVista('usuario')} className={`boton boton-secundario ${hay ? '' : 'boton-grande'}`}>Ya tengo usuario</button>
+        <button onClick={() => setVista('nuevo')} className={`boton ${hay ? 'boton-secundario' : 'boton-principal boton-grande'}`}><Icono nombre="mas" />{t('Crear mi usuario')}</button>
+        <button onClick={() => setVista('usuario')} className={`boton boton-secundario ${hay ? '' : 'boton-grande'}`}>{t('Ya tengo usuario')}</button>
       </div>
-      <p className="nota" style={{ marginTop: 22 }}>En un mismo móvil pueden entrar varios estudiantes, cada uno con su usuario y su contraseña.</p>
+      <p className="nota" style={{ marginTop: 22 }}>{t('En un mismo móvil pueden entrar varios estudiantes, cada uno con su usuario y su contraseña.')}</p>
     </div>
   )
 }
@@ -1035,34 +1061,34 @@ function AlumnoContrasena({ perfil, onEntrar, onVolver }) {
       onEntrar(a)
     } catch (e) {
       setError(e.message !== SIN_CONEXION ? e.message
-        : perfil?.hash ? 'Contraseña incorrecta.' : 'La primera vez en este móvil hace falta conexión con el ordenador de la clase.')
+        : perfil?.hash ? t('Contraseña incorrecta.') : t('La primera vez en este móvil hace falta conexión con el ordenador de la clase.'))
       setEnviando(false)
     }
   }
 
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver}>{perfil ? 'No soy yo' : 'Volver'}</Volver></header>
+      <header className="cabecera"><Volver onClick={onVolver}>{perfil ? t('No soy yo') : t('Volver')}</Volver></header>
       {perfil
-        ? <h1 className="titulo titulo-con-avatar"><Avatar nombre={perfil.nombre} />Hola, {perfil.nombre}</h1>
-        : <h1 className="titulo">Entrar con mi usuario</h1>}
-      <p className="frase">{perfil ? 'Escribe tu contraseña.' : 'Escribe tu usuario y tu contraseña.'}</p>
+        ? <h1 className="titulo titulo-con-avatar"><Avatar nombre={perfil.nombre} />{t('Hola, {nombre}', { nombre: perfil.nombre })}</h1>
+        : <h1 className="titulo">{t('Entrar con mi usuario')}</h1>}
+      <p className="frase">{perfil ? t('Escribe tu contraseña.') : t('Escribe tu usuario y tu contraseña.')}</p>
       <form onSubmit={entrar} className="formulario" style={{ marginTop: 24 }}>
         {!perfil && (
           <div className="campo-grupo">
-            <label htmlFor="entrar-usuario" className="etiqueta">Usuario</label>
+            <label htmlFor="entrar-usuario" className="etiqueta">{t('Usuario')}</label>
             <input id="entrar-usuario" className="campo" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
               autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
           </div>
         )}
         <div className="campo-grupo">
-          <label htmlFor="entrar-contrasena" className="etiqueta">Contraseña</label>
+          <label htmlFor="entrar-contrasena" className="etiqueta">{t('Contraseña')}</label>
           <CampoContrasena id="entrar-contrasena" valor={contrasena} onCambio={setContrasena} autoFocus={!!perfil} />
-          <p className="pista">¿Se te ha olvidado? Pídele a tu profe una nueva.</p>
+          <p className="pista">{t('¿Se te ha olvidado? Pídele a tu profe una nueva.')}</p>
         </div>
         <Aviso texto={error} />
         <button type="submit" disabled={enviando || !usuarioValido(usuario) || contrasena.length < 4} className="boton boton-principal boton-ancho boton-grande">
-          {enviando ? 'Entrando…' : 'Entrar'}
+          {enviando ? t('Entrando…') : t('Entrar')}
         </button>
       </form>
     </div>
@@ -1095,7 +1121,8 @@ function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
       onEntrar(a)
     } catch (e) {
       if (e.detalle?.sugerencia) setUsuario(e.detalle.sugerencia)
-      setError(e.message === SIN_CONEXION ? 'Para crear tu usuario hace falta conexión con el ordenador de la clase.' : e.message)
+      setError(e.message === SIN_CONEXION ? t('Para crear tu usuario hace falta conexión con el ordenador de la clase.')
+        : e.detalle?.sugerencia ? t('Ese usuario ya lo tiene otra persona. Te proponemos «{usuario}».', { usuario: e.detalle.sugerencia }) : e.message)
       setEnviando(false)
     }
   }
@@ -1103,31 +1130,31 @@ function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} /></header>
-      <h1 className="titulo">{antiguo ? 'Ponle usuario y contraseña' : 'Crear mi usuario'}</h1>
+      <h1 className="titulo">{antiguo ? t('Ponle usuario y contraseña') : t('Crear mi usuario')}</h1>
       <p className="frase">{antiguo
-        ? 'Antes se entraba solo con el nombre. Ahora cada estudiante tiene usuario y contraseña, para que nadie entre como tú. No pierdes tus clases ni tus respuestas.'
-        : 'Te pediremos la contraseña cada vez que entres. Así nadie más puede entrar como tú.'}</p>
+        ? t('Antes se entraba solo con el nombre. Ahora cada estudiante tiene usuario y contraseña, para que nadie entre como tú. No pierdes tus clases ni tus respuestas.')
+        : t('Te pediremos la contraseña cada vez que entres. Así nadie más puede entrar como tú.')}</p>
       <form onSubmit={crear} className="formulario" style={{ marginTop: 24 }}>
         <div className="campo-grupo">
-          <label htmlFor="nuevo-nombre" className="etiqueta">¿Cómo te llamas?</label>
-          <input id="nuevo-nombre" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off" placeholder="Tu nombre" />
+          <label htmlFor="nuevo-nombre" className="etiqueta">{t('¿Cómo te llamas?')}</label>
+          <input id="nuevo-nombre" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off" placeholder={t('Tu nombre')} />
         </div>
         <div className="campo-grupo">
-          <label htmlFor="nuevo-usuario" className="etiqueta">Tu usuario</label>
+          <label htmlFor="nuevo-usuario" className="etiqueta">{t('Tu usuario')}</label>
           <input id="nuevo-usuario" className="campo" value={elUsuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
             autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
-          <p className="pista">Solo letras y números, sin espacios. Apúntalo: lo necesitas para entrar.</p>
+          <p className="pista">{t('Solo letras y números, sin espacios. Apúntalo: lo necesitas para entrar.')}</p>
         </div>
         <div className="campo-grupo">
-          <label htmlFor="nuevo-contrasena" className="etiqueta">Tu contraseña</label>
+          <label htmlFor="nuevo-contrasena" className="etiqueta">{t('Tu contraseña')}</label>
           <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
-          <p className="pista">Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.</p>
+          <p className="pista">{t('Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.')}</p>
         </div>
         {!antiguo && <CampoCodigo valor={codigo} onCambio={setCodigo} />}
         <Aviso texto={error} />
         <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || (!antiguo && codigoLimpio.length !== 6)}
           className="boton boton-principal boton-ancho boton-grande">
-          {enviando ? 'Guardando…' : antiguo ? 'Guardar y entrar' : 'Crear y entrar'}
+          {enviando ? t('Guardando…') : antiguo ? t('Guardar y entrar') : t('Crear y entrar')}
         </button>
       </form>
     </div>
@@ -1145,6 +1172,7 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [progreso, setProgreso] = useState(() => leer(clave('progreso'), {})) // { leccion_id: { empezada, hecha, aciertos, total } }
   const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
   const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
+  const [dudasQuitadas, setDudasQuitadas] = useState(() => leer(clave('dudas-quitadas'), [])) // las que el estudiante ya no quiere ver
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -1257,10 +1285,20 @@ function AlumnoCasa({ alumno, onSalir }) {
     setDudasCola(cola)
     sincronizar()
   }
+  // Si aún no se ha enviado, ya no se envía. Si ya se envió, deja de verse en este móvil (el profe la sigue viendo).
+  const quitarDuda = (id) => {
+    const cola = leer('dudas-pendientes', []).filter(d => d.id !== id)
+    guardar('dudas-pendientes', cola)
+    setDudasCola(cola)
+    const quitadas = [...dudasQuitadas, id]
+    guardar(clave('dudas-quitadas'), quitadas)
+    setDudasQuitadas(quitadas)
+  }
   const dudasDe = (leccionId) => {
     const delServidor = dudas.filter(d => d.leccion_id === leccionId)
     const ids = new Set(delServidor.map(d => d.id))
     return [...delServidor, ...dudasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id))]
+      .filter(d => !dudasQuitadas.includes(d.id))
   }
 
   if (otraClase) {
@@ -1275,7 +1313,7 @@ function AlumnoCasa({ alumno, onSalir }) {
         <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
           onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
           onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
-          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} />
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} onQuitar={quitarDuda} />
       </>
     )
   }
@@ -1290,14 +1328,14 @@ function AlumnoCasa({ alumno, onSalir }) {
       <div className="pagina">
         <header className="cabecera">
           <span className="marca">Mochila</span>
-          <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />Salir</button>
+          <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />{t('Salir')}</button>
         </header>
-        <h1 className="titulo titulo-con-avatar"><Avatar nombre={alumno.nombre} />Hola, {alumno.nombre}</h1>
+        <h1 className="titulo titulo-con-avatar"><Avatar nombre={alumno.nombre} />{t('Hola, {nombre}', { nombre: alumno.nombre })}</h1>
         {total > 0 && <ResumenDescargado lecciones={total} appGuardada={appGuardada} actualizado={actualizado} />}
         {clases.length === 0 && (
           <p className="frase">{estado === 'sin-conexion'
-            ? 'Cuando haya conexión aparecerán tus clases.'
-            : 'Todavía no estás en ninguna clase. Pulsa «Entrar en otra clase» y escribe el código que te dé tu profe.'}</p>
+            ? t('Cuando haya conexión aparecerán tus clases.')
+            : t('Todavía no estás en ninguna clase. Pulsa «Entrar en otra clase» y escribe el código que te dé tu profe.')}</p>
         )}
 
         {grupos.map(([c, materias]) => {
@@ -1305,10 +1343,10 @@ function AlumnoCasa({ alumno, onSalir }) {
           return (
             <section key={c.codigo} className="seccion">
               <h2 className="seccion-titulo">{c.nombre}</h2>
-              {c.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Tu profe todavía no ha publicado lecciones.</p>}
+              {c.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Tu profe todavía no ha publicado lecciones.')}</p>}
               {materias.map(([materia, lecciones]) => (
                 <div key={materia}>
-                  {conTitulos && <h3 className="subtitulo">{materia}</h3>}
+                  {conTitulos && <h3 className="subtitulo">{t(materia)}</h3>}
                   <div className="lista">
                     {lecciones.map(l => {
                       const p = progreso[l.id]
@@ -1317,14 +1355,14 @@ function AlumnoCasa({ alumno, onSalir }) {
                           <span className="fila-texto">
                             <span className="fila-titulo">{l.titulo}</span>
                             <span className="fila-detalle">
-                              <span className="descargada"><IconoDescargado tam={18} />Descargada</span>
+                              <span className="descargada"><IconoDescargado tam={18} />{t('Descargada')}</span>
                               {p?.hecha
-                                ? <span className="descargada"><Icono nombre="bien" tam={18} />Hecha · {p.aciertos} de {p.total}</span>
-                                : <span>{p?.empezada ? 'Empezada' : 'Sin empezar'}</span>}
-                              {dudasDe(l.id).length > 0 && <span className="descargada" style={{ color: 'var(--ocre)' }}><Icono nombre="duda" tam={18} />{plural(dudasDe(l.id).filter(d => d.respuesta).length, 'duda contestada', 'dudas contestadas')}</span>}
+                                ? <span className="descargada"><Icono nombre="bien" tam={18} />{t('Hecha · {a} de {b}', { a: p.aciertos, b: p.total })}</span>
+                                : <span>{p?.empezada ? t('Empezada') : t('Sin empezar')}</span>}
+                              {dudasDe(l.id).length > 0 && <span className="descargada" style={{ color: 'var(--ocre)' }}><Icono nombre="duda" tam={18} />{plural(dudasDe(l.id).filter(d => d.respuesta).length, '{n} duda contestada', '{n} dudas contestadas')}</span>}
                             </span>
                           </span>
-                          {l.id === toca ? <span className="insignia insignia-amarilla">Te toca</span> : <Icono nombre="seguir" className="icono-final" />}
+                          {l.id === toca ? <span className="insignia insignia-amarilla">{t('Te toca')}</span> : <Icono nombre="seguir" className="icono-final" />}
                         </button>
                       )
                     })}
@@ -1337,11 +1375,11 @@ function AlumnoCasa({ alumno, onSalir }) {
 
         <div className="botones" style={{ marginTop: 36 }}>
           <button onClick={sincronizar} disabled={estado === 'enviando'} className="boton boton-secundario boton-ancho">
-            <Icono nombre="buscar" />{estado === 'enviando' ? 'Buscando…' : 'Buscar lecciones nuevas'}
+            <Icono nombre="buscar" />{estado === 'enviando' ? t('Buscando…') : t('Buscar lecciones nuevas')}
           </button>
-          <button onClick={() => setOtraClase(true)} className="boton boton-fantasma boton-ancho">Entrar en otra clase</button>
+          <button onClick={() => setOtraClase(true)} className="boton boton-fantasma boton-ancho">{t('Entrar en otra clase')}</button>
         </div>
-        <p className="nota" style={{ textAlign: 'center', marginTop: 18 }}>Cuando termines, pulsa «Salir» para que pueda entrar otro estudiante.</p>
+        <p className="nota" style={{ textAlign: 'center', marginTop: 18 }}>{t('Cuando termines, pulsa «Salir» para que pueda entrar otro estudiante.')}</p>
       </div>
     </>
   )
@@ -1361,7 +1399,7 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
       await api(`/api/clases/${codigoLimpio}/unirse`, { method: 'POST', body: { alumno_id: alumno.id } })
       onDentro()
     } catch (e) {
-      setError(e.message === SIN_CONEXION ? 'Para entrar en una clase nueva hace falta conexión con el ordenador de la clase.' : e.message)
+      setError(e.message === SIN_CONEXION ? t('Para entrar en una clase nueva hace falta conexión con el ordenador de la clase.') : e.message)
       setEnviando(false)
     }
   }
@@ -1369,13 +1407,13 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} /></header>
-      <h1 className="titulo">Entrar en otra clase</h1>
-      <p className="frase">Escribe el código que te dé tu profe.</p>
+      <h1 className="titulo">{t('Entrar en otra clase')}</h1>
+      <p className="frase">{t('Escribe el código que te dé tu profe.')}</p>
       <form onSubmit={entrar} className="formulario" style={{ marginTop: 24 }}>
         <CampoCodigo valor={codigo} onCambio={setCodigo} />
         <Aviso texto={error} />
         <button type="submit" disabled={enviando || codigoLimpio.length !== 6} className="boton boton-principal boton-ancho boton-grande">
-          {enviando ? 'Entrando…' : 'Entrar'}
+          {enviando ? t('Entrando…') : t('Entrar')}
         </button>
       </form>
     </div>
@@ -1383,26 +1421,31 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
 }
 
 // La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar }) {
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar, onQuitar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
   const [paso, setPaso] = useState(0)
   const [n, setN] = useState(0)
   const [elegida, setElegida] = useState(null)
   const [respondida, setRespondida] = useState(false)
+  const [fallada, setFallada] = useState(null) // la opción del primer intento, si falló y hay pista
   const [aciertos, setAciertos] = useState(0)
   const [terminado, setTerminado] = useState(false)
   const pregunta = preguntas[n]
   const acierto = elegida === pregunta.correcta
+  // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
+  const pista = buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
   const responder = () => {
-    setRespondida(true)
+    if (fallada !== null) return setRespondida(true) // segundo intento: no cuenta para la nota
     if (acierto) setAciertos(a => a + 1)
     const pendientes = leer('pendientes', [])
     pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
     guardar('pendientes', pendientes)
     onRespuesta()
+    if (!acierto && pista.length) { setFallada(elegida); setElegida(null) }
+    else setRespondida(true)
   }
 
   const siguiente = () => {
@@ -1411,86 +1454,95 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
       setN(n + 1)
       setElegida(null)
       setRespondida(false)
+      setFallada(null)
     } else {
       setTerminado(true)
       onTerminar(aciertos, preguntas.length) // si hay conexión, la nota le llega al profe ya
     }
   }
 
-  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
+  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setFallada(null); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
 
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver}>Mis lecciones</Volver></header>
+      <header className="cabecera"><Volver onClick={onVolver}>{t('Mis lecciones')}</Volver></header>
       <h1 className="titulo">{leccion.titulo}</h1>
 
-      <nav className="pasos" aria-label="Pasos de la lección">
-        {['Leer', 'Ejemplo', 'Preguntas'].map((t, i) => (
-          <button key={t} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
-            className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {t}</button>
+      <nav className="pasos" aria-label={t('Pasos de la lección')}>
+        {[t('Leer'), t('Ejemplo'), t('Preguntas')].map((nombre, i) => (
+          <button key={i} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
+            className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {nombre}</button>
         ))}
       </nav>
 
       {paso < 2 && (
         <>
           <article className="hoja">
-            <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} /></div>
+            <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} lengua={leccion.contenido.idioma} /></div>
             <p className="hoja-texto">{paso === 0 ? lectura_facil : explicacion_ejemplo}</p>
           </article>
           <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
-            {paso === 0 ? 'Ya lo he leído' : 'Ir a las preguntas'}<Icono nombre="seguir" />
+            {paso === 0 ? t('Ya lo he leído') : t('Ir a las preguntas')}<Icono nombre="seguir" />
           </button>
-          <Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} />
+          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>
       )}
 
       {paso === 2 && terminado && (
         <div className="resultado">
-          <p className="pregunta-num">Tu resultado</p>
-          <p className="resultado-cifra"><mark>{aciertos} de {preguntas.length}</mark></p>
-          <p className="resultado-texto">{aciertos === preguntas.length ? '¡Perfecto! Las has acertado todas.'
-            : aciertos >= Math.ceil(preguntas.length * 0.6) ? 'Muy bien. Repasa las que has fallado.'
-              : 'Vuelve a leer la lección y prueba otra vez.'}</p>
+          <p className="pregunta-num">{t('Tu resultado')}</p>
+          <p className="resultado-cifra"><mark>{t('{a} de {b}', { a: aciertos, b: preguntas.length })}</mark></p>
+          <p className="resultado-texto">{aciertos === preguntas.length ? t('¡Perfecto! Las has acertado todas.')
+            : aciertos >= Math.ceil(preguntas.length * 0.6) ? t('Muy bien. Repasa las que has fallado.')
+              : t('Vuelve a leer la lección y prueba otra vez.')}</p>
           <div className="botones">
-            <button onClick={onVolver} className="boton boton-principal boton-ancho boton-grande">Volver a mis lecciones</button>
-            <button onClick={repetir} className="boton boton-secundario boton-ancho">Repetir las preguntas</button>
-            <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">Volver a leer</button>
+            <button onClick={onVolver} className="boton boton-principal boton-ancho boton-grande">{t('Volver a mis lecciones')}</button>
+            <button onClick={repetir} className="boton boton-secundario boton-ancho">{t('Repetir las preguntas')}</button>
+            <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">{t('Volver a leer')}</button>
           </div>
-          <p className="nota">Tus respuestas le llegan a tu profe cuando hay conexión.</p>
-          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
+          <p className="nota">{t('Tus respuestas le llegan a tu profe cuando hay conexión.')}</p>
+          <div style={{ textAlign: 'start' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} /></div>
         </div>
       )}
 
       {paso === 2 && !terminado && (
         <>
-          <p className="pregunta-num">Pregunta {n + 1} de {preguntas.length}</p>
+          <p className="pregunta-num">{t('Pregunta {a} de {b}', { a: n + 1, b: preguntas.length })}</p>
           <h2 className="pregunta-texto">{pregunta.pregunta}</h2>
           <div className="opciones">
             {pregunta.opciones.map((opcion, i) => {
               const como = respondida
                 ? (i === pregunta.correcta ? 'opcion-buena' : i === elegida ? 'opcion-mala' : 'opcion-apagada')
-                : (i === elegida ? 'opcion-elegida' : '')
+                : (i === fallada ? 'opcion-mala' : i === elegida ? 'opcion-elegida' : '')
               return (
-                <button key={i} onClick={() => setElegida(i)} disabled={respondida} aria-pressed={i === elegida} className={`opcion ${como}`}>
+                <button key={i} onClick={() => setElegida(i)} disabled={respondida || i === fallada} aria-pressed={i === elegida} className={`opcion ${como}`}>
                   <span className="letra">
-                    {respondida && i === pregunta.correcta ? <Icono nombre="bien" tam={20} /> : respondida && i === elegida ? <Icono nombre="mal" tam={20} /> : 'ABCD'[i]}
+                    {respondida && i === pregunta.correcta ? <Icono nombre="bien" tam={20} /> : (respondida && i === elegida) || (!respondida && i === fallada) ? <Icono nombre="mal" tam={20} /> : 'ABCD'[i]}
                   </span>
                   <span>{opcion}</span>
                 </button>
               )
             })}
           </div>
+          {!respondida && fallada !== null && (
+            <div role="status" className="aviso aviso-atencion" style={{ marginTop: 22 }}>
+              <strong>{t('No es esa. Te doy una pista.')}</strong>
+              <span style={{ display: 'block', marginTop: 4 }}>{t('Mira lo que dice la lección:')}</span>
+              {pista.map((trozo, i) => <span key={i} style={{ display: 'block', marginTop: 6 }}>«{trozo.texto}» <span className="nota">{t('(en «{parte}»)', { parte: t(trozo.parte) })}</span></span>)}
+              <div style={{ marginTop: 10 }}><Escuchar key={n} texto={pista.map(trozo => trozo.texto).join(' ')} lengua={leccion.contenido.idioma} /></div>
+            </div>
+          )}
           {!respondida
-            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>Comprobar</button>
+            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>{fallada === null ? t('Comprobar') : t('Probar otra vez')}</button>
             : (
               <>
                 <div role="status" className={`aviso ${acierto ? 'aviso-ok' : 'aviso-error'}`} style={{ marginTop: 22 }}>
-                  <strong>{acierto ? '¡Bien hecho!' : 'No es esa.'}</strong>
-                  {!acierto && <span style={{ display: 'block', marginTop: 4 }}>La buena es la {'ABCD'[pregunta.correcta]}: «{pregunta.opciones[pregunta.correcta]}»</span>}
+                  <strong>{acierto ? t('¡Bien hecho!') : t('No es esa.')}</strong>
+                  {!acierto && <span style={{ display: 'block', marginTop: 4 }}>{t('La buena es la {letra}: «{texto}»', { letra: 'ABCD'[pregunta.correcta], texto: pregunta.opciones[pregunta.correcta] })}</span>}
                   {pregunta.porque && <span style={{ display: 'block', marginTop: 6 }}>{pregunta.porque}</span>}
                 </div>
                 <button onClick={siguiente} className="boton boton-principal boton-ancho boton-grande">
-                  {n < preguntas.length - 1 ? 'Siguiente pregunta' : 'Ver mi resultado'}<Icono nombre="seguir" />
+                  {n < preguntas.length - 1 ? t('Siguiente pregunta') : t('Ver mi resultado')}<Icono nombre="seguir" />
                 </button>
               </>
             )}
@@ -1502,9 +1554,12 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
 
 // «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
 // de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
-function Dudas({ dudas, sinConexion, onPreguntar }) {
+function Dudas({ dudas, contenido, sinConexion, onPreguntar, onQuitar }) {
   const [abierta, setAbierta] = useState(false)
   const [texto, setTexto] = useState('')
+  const campo = useRef(null)
+  // Para quien escribe con dificultad: la duda ya empieza escrita y solo falta la palabra.
+  const empezar = (inicio) => { setTexto(inicio); campo.current?.focus() }
 
   const enviar = (ev) => {
     ev.preventDefault()
@@ -1517,14 +1572,18 @@ function Dudas({ dudas, sinConexion, onPreguntar }) {
     <section className="seccion">
       {dudas.length > 0 && (
         <>
-          <h2 className="seccion-titulo">Mis dudas</h2>
+          <h2 className="seccion-titulo">{t('Mis dudas')}</h2>
           <div style={{ marginBottom: 16 }}>
             {dudas.map(d => (
-              <div key={d.id} className="tarjeta duda">
-                <p className="duda-pregunta">{d.pregunta}</p>
+              <div key={d.id} className="tarjeta duda" style={{ position: 'relative' }}>
+                <button onClick={() => window.confirm(t('¿Borrar esta duda?')) && onQuitar(d.id)} aria-label={t('Borrar esta duda')}
+                  style={{ position: 'absolute', top: 6, insetInlineEnd: 6, width: 40, height: 40, display: 'grid', placeItems: 'center', background: 'none', border: 0, color: 'var(--tinta-suave)', cursor: 'pointer' }}>
+                  <Icono nombre="mal" tam={18} />
+                </button>
+                <p className="duda-pregunta" style={{ paddingInlineEnd: 30 }}>{d.pregunta}</p>
                 {d.respuesta
-                  ? <p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p>
-                  : <p className="nota">{sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'}</p>}
+                  ? <><p className="duda-respuesta">{t(d.respuesta)}{d.corregida ? <span className="nota" style={{ display: 'block' }}>{t('Te lo ha contestado tu profe.')}</span> : null}</p><div style={{ marginTop: 10 }}><Escuchar texto={t(d.respuesta)} lengua={contenido?.idioma} /></div></>
+                  : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? t('Se enviará cuando haya conexión.') : t('Esperando la respuesta…')} />}
               </div>
             ))}
           </div>
@@ -1534,24 +1593,42 @@ function Dudas({ dudas, sinConexion, onPreguntar }) {
         ? (
           <form onSubmit={enviar} className="formulario">
             <div className="campo-grupo">
-              <label htmlFor="duda-texto" className="etiqueta">¿Qué no has entendido?</label>
-              <textarea id="duda-texto" className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
+              <label htmlFor="duda-texto" className="etiqueta">{t('¿Qué no has entendido?')}</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {[t('¿Qué es'), t('No entiendo'), t('¿Por qué')].map(inicio => (
+                  <button key={inicio} type="button" onClick={() => empezar(inicio + ' ')} className="boton boton-secundario boton-pequeno">{inicio}…</button>
+                ))}
+              </div>
+              <textarea id="duda-texto" ref={campo} className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
                 style={{ minHeight: 110 }} />
-              <p className="pista">Pregunta sobre esta lección. Te contesta Mochila con lo que dice la lección, y tu profe también lo verá.</p>
+              <p className="pista">{t('Pregunta sobre esta lección. Te contesta Mochila con lo que dice la lección, y tu profe también lo verá.')}</p>
             </div>
             <div className="botones-fila">
-              <button type="button" onClick={() => setAbierta(false)} className="boton boton-fantasma">Cancelar</button>
-              <button type="submit" disabled={texto.trim().length < 3} className="boton boton-secundario">Enviar mi duda</button>
+              <button type="button" onClick={() => setAbierta(false)} className="boton boton-fantasma">{t('Cancelar')}</button>
+              <button type="submit" disabled={texto.trim().length < 3} className="boton boton-secundario">{t('Enviar mi duda')}</button>
             </div>
           </form>
         )
-        : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />Tengo una duda</button>}
+        : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />{t('Tengo una duda')}</button>}
     </section>
   )
 }
 
+// Mientras no llega la respuesta de la IA de la clase, el móvil busca en la lección, sin internet.
+function EnLaLeccion({ contenido, pregunta, nota }) {
+  const trozos = buscar(contenido, pregunta)
+  return (
+    <>
+      {trozos.length > 0 && <p className="nota" style={{ marginTop: 10 }}>{t('Mientras tanto, esto dice la lección:')}</p>}
+      {trozos.map((trozo, i) => <p key={i} className="duda-respuesta">{trozo.texto} <span className="nota">{t('(en «{parte}»)', { parte: t(trozo.parte) })}</span></p>)}
+      {trozos.length > 0 && <div style={{ marginTop: 10 }}><Escuchar texto={trozos.map(trozo => trozo.texto).join(' ')} lengua={contenido?.idioma} /></div>}
+      <p className="nota" style={{ marginTop: 10 }}>{nota}</p>
+    </>
+  )
+}
+
 // Lee en voz alta con la voz del propio móvil (sin internet si el móvil tiene la voz instalada).
-function Escuchar({ texto }) {
+function Escuchar({ texto, lengua = 'es' }) {
   const [sonando, setSonando] = useState(false)
   const hayVoz = typeof window !== 'undefined' && 'speechSynthesis' in window
 
@@ -1563,7 +1640,7 @@ function Escuchar({ texto }) {
     window.speechSynthesis.cancel()
     if (sonando) { setSonando(false); return }
     const voz = new SpeechSynthesisUtterance(texto)
-    voz.lang = 'es-ES'
+    voz.lang = lengua
     voz.rate = 0.9
     voz.onend = () => setSonando(false)
     voz.onerror = () => setSonando(false)
@@ -1573,7 +1650,7 @@ function Escuchar({ texto }) {
 
   return (
     <button onClick={alternar} aria-pressed={sonando} className="boton boton-secundario boton-pequeno">
-      <Icono nombre={sonando ? 'parar' : 'altavoz'} tam={20} />{sonando ? 'Parar' : 'Escuchar'}
+      <Icono nombre={sonando ? 'parar' : 'altavoz'} tam={20} />{sonando ? t('Parar') : t('Escuchar')}
     </button>
   )
 }

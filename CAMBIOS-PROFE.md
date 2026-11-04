@@ -1,6 +1,6 @@
 # Cambios del profe: cuenta, modo sin conexión, título, archivos y edición de lecciones
 
-Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`. Todavía no está unida a `main`.
+Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`. **Unida con `main` (ya con los idiomas) en la rama `union-profe`**: sus textos pasan por `t()`, con francés e inglés (los otros idiomas salen en inglés hasta que se traduzcan), y la lección que espera sin conexión guarda también su idioma.
 
 | Commit | Qué hace |
 |---|---|
@@ -63,7 +63,7 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 
 ## 3. Título de la lección
 
-- «Nueva lección» tiene ahora 4 pasos, y el **título es el primero**: 1. El título · 2. Las fotos · 3. El texto · 4. La materia.
+- «Nueva lección» tiene ahora 5 pasos, y el **título es el primero**: 1. El título · 2. Las fotos · 3. El texto · 4. La materia · 5. El idioma de la lección (este viene de `main`).
 - Si el profe escribe el título, se usa ese. Si lo deja vacío, se queda el que pone la IA.
 - `POST /api/clases/{codigo}/lecciones` acepta un `titulo` opcional (sin espacios de sobra, como mucho 120 letras).
 

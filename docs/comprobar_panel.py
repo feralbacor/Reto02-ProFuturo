@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as carpeta:
         c.executescript(main.TABLAS)
         demo.crear_demo(c)
     datos = panel.panel('aula23')
-    assert len(datos['alumnos']) == 6 and len(datos['lecciones']) == 2
+    assert len(datos['alumnos']) == 6 and len(datos['lecciones']) == 4
     assert [a['nombre'] for a in datos['alumnos'] if a['motivos']] == ['Diego', 'Elena']
     ana = demo.identificador('alumno-0')
     leccion = demo.identificador('leccion-0')
@@ -106,6 +106,9 @@ with tempfile.TemporaryDirectory() as carpeta:
             c.execute("INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES ('otra-respuesta', ?, 'otra-leccion', 0, 0, ?)", (ana, datetime.now().isoformat()))
             c.execute("INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) SELECT 'borrador', 'AULA23', titulo, contenido, fecha, 0 FROM lecciones LIMIT 1")
             c.execute("INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES ('respuesta-borrador', ?, 'borrador', 0, 0, ?)", (ana, datetime.now().isoformat()))
+            for id_, alumno, leccion_id in [('duda-baja', ana, leccion), ('duda-borrador', ana, 'borrador'), ('duda-otra', ana, 'otra-leccion'), ('duda-control', demo.identificador('alumno-1'), leccion)]:
+                c.execute('INSERT INTO dudas (id, alumno, leccion_id, pregunta, fecha, respuesta, corregida) VALUES (?, ?, ?, ?, ?, NULL, 0)',
+                          (id_, alumno, leccion_id, '¿Qué significa evaporación?', datetime.now().isoformat()))
             antes = '\n'.join(c.iterdump())
         assert asyncio.run(borrar_por_api('AULA23', ana)) == 401
         assert asyncio.run(borrar_por_api('AULA23', ana, '0000')) == 401
@@ -129,6 +132,8 @@ with tempfile.TemporaryDirectory() as carpeta:
             assert not c.execute('SELECT 1 FROM respuestas r JOIN lecciones l ON l.id = r.leccion_id WHERE l.clase = ? AND r.alumno = ?', ('AULA23', ana)).fetchone()
             assert c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', ('OTRA12', ana)).fetchone()
             assert c.execute("SELECT 1 FROM respuestas WHERE id = 'otra-respuesta'").fetchone()
+            assert not c.execute("SELECT 1 FROM dudas WHERE id IN ('duda-baja', 'duda-borrador')").fetchone()
+            assert c.execute("SELECT COUNT(*) FROM dudas WHERE id IN ('duda-otra', 'duda-control')").fetchone()[0] == 2
             assert c.execute('SELECT COUNT(*) FROM respuestas WHERE alumno = ?', (demo.identificador('alumno-1'),)).fetchone()[0] == 10
         assert main.entrar_alumno(main.Entrar(usuario='aula23ana', contrasena='1234'))['id'] == ana
         assert not any(a['id'] == ana for a in panel.panel('AULA23')['alumnos'])

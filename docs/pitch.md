@@ -1,52 +1,56 @@
-# Mochila · Pitch de 3 minutos
+# Mochila · Pitch de tres minutos
 
-Guion oral para dos personas: una presenta y maneja el portátil del docente; otra maneja el móvil del alumno. Ensayar con cronómetro. La demo completa está en [guion-demo.md](guion-demo.md).
+Dos personas: profe en el portátil y estudiante en el móvil. Partir de una lección descargada. Ensayar con cronómetro; demostrar la creación completa después del discurso.
 
 ## 0:00–0:25 · Problema
 
-Imaginad que una alumna tiene un móvil, ganas de aprender y una conexión que desaparece. Una lección que depende de Internet deja de servir justo cuando más la necesita.
+Una alumna tiene ganas de aprender, pero su conexión desaparece. Una lección que depende de Internet deja de servir justo cuando más la necesita.
 
-Mochila responde a ese problema: permite preparar una clase, llevarla en el dispositivo y seguir aprendiendo aunque no haya red.
+Mochila permite llevar la clase en el dispositivo y continuar aprendiendo aunque no haya red.
 
 ## 0:25–0:55 · Solución
 
-El docente crea una clase con nombre y PIN. El alumnado crea usuario y contraseña con el código de clase, sin email ni apellidos. Puede compartir móvil y cambiar de perfil al salir.
+El profesor parte de una página de su libro. Fotografía la página, revisa el texto y elige materia e idioma de la lección. Una IA local prepara una lectura sencilla, un ejemplo y cinco preguntas. El docente revisa el material antes de publicarlo.
 
-Para preparar una lección, el profesor elige la materia y fotografía una página de su libro. Mochila lee la foto; el docente revisa el texto y genera una lectura sencilla, un ejemplo y un test. Revisa el resultado y lo publica. La IA ayuda a preparar material; el profesor conserva la decisión educativa.
+La portada permite elegir idioma. El estudiante entra con usuario y contraseña. No pedimos email ni apellidos. Varios niños pueden compartir un móvil y cambiar de perfil al salir.
 
-## 0:55–1:45 · Demo
+## 0:55–1:50 · Demo
 
-Mirad el móvil: las lecciones aparecen por materia. Abrimos una que ya hemos descargado. Tenemos Leer, Ejemplo, Escuchar y Test.
+Mirad el móvil: esta lección ya está descargada, también podemos abrir una en francés o inglés. Tiene tres pasos: Leer, Ejemplo y Preguntas. Cortamos la conexión y seguimos trabajando. La corrección es inmediata y las respuestas se guardan en el móvil.
 
-Ahora desconectamos el móvil. Podemos seguir leyendo y responder. La corrección es inmediata y las respuestas quedan guardadas. Arriba vemos cuántas faltan por enviar.
+La alumna también puede pulsar «Tengo una duda». La escribe y el móvil muestra fragmentos relacionados de la lección, sin red ni IA. Si no encuentra ninguno, mantiene «Se enviará cuando haya conexión».
 
-Recuperamos la conexión con el aula. Mochila envía los pendientes y muestra «Todo enviado». En el portátil, el docente abre «Ver notas» y actualiza el panel: ahí están los resultados del alumno. Un reintento del mismo envío no duplica las respuestas.
+Volvemos a conectar con el aula. Las respuestas y la pregunta se envían solas. Cuando llega la respuesta, aparece junto a la duda. El profesor puede verla en «Dudas de tus alumnos» y cambiarla. Entonces la alumna ve «Te lo ha contestado tu profe».
 
-## 1:45–2:20 · Por qué funciona sin Internet
+En «Ver notas», el docente consulta los resultados recibidos y quién puede necesitar apoyo.
 
-Hay dos piezas locales. El móvil guarda el material y las respuestas. El ordenador del aula ejecuta la IA, qwen3-vl:4b, con un modelo de unos 3,3 gigabytes descargado previamente. Los móviles no necesitan ejecutar ese modelo.
+## 1:50–2:20 · Por qué funciona sin Internet
 
-Una wifi local permite compartir el contenido sin salir a Internet. Si el alumno se aleja, sigue trabajando con lo descargado y sincroniza al volver. Si no hay novedades, no vuelve a descargar contenido.
+El móvil guarda la aplicación, las lecciones, las respuestas y las dudas pendientes. El ordenador del aula ejecuta Ollama con qwen3-vl:4b-instruct, descargado previamente. Los móviles no necesitan ejecutar ese modelo.
 
-En nuestras pruebas de lectura, recuperamos 185 de 185 palabras de una foto realista y 184 de una foto muy mala, sin inventar palabras. Son resultados de esas pruebas, no una garantía para cualquier imagen.
+Una wifi local permite compartir información sin Internet. Si tampoco hay conexión con el ordenador, el estudiante continúa con lo descargado. La búsqueda de fragmentos funciona en el móvil desconectado; la respuesta de IA espera al ordenador.
 
 ## 2:20–2:45 · Impacto
 
-El aprendizaje puede continuar durante los cortes. El docente dispone de material revisado, ejercicios con explicación y un panel para detectar quién puede necesitar apoyo. La falta de respuestas también puede significar falta de conexión.
+Mochila combina material revisado por el docente, práctica con feedback y dudas vinculadas a la lección. El profesor puede acompañar también a quien no ha podido enviar sus avances; la ausencia de respuestas puede deberse a la conexión.
 
-En el despliegue local, el contenido y el progreso permanecen en el aula. La IA solo recibe contenido educativo, nunca datos del alumnado.
+En una instalación enteramente local, el contenido y el progreso permanecen en el aula. El modelo recibe la lección y la pregunta, sin nombres ni notas del alumnado.
 
 ## 2:45–3:00 · Siguientes pasos
 
-El siguiente paso es probar Mochila en una escuela: medir tiempos, consumo y funcionamiento en móviles modestos, y evaluar los contenidos con docentes.
+El siguiente paso es un piloto con docentes: evaluar contenidos, continuidad durante los cortes, accesibilidad y funcionamiento en móviles modestos.
 
 Queremos que perder la conexión deje de significar perder la clase.
 
 ---
 
-Notas de ensayo, fuera del discurso:
+Notas fuera del discurso:
 
-- El flujo de usuarios y sincronización está integrado desde main (6163d10). Las medidas de OCR, el tamaño del modelo y los tiempos proceden del equipo; falta repetir el ensayo completo en este ordenador y el móvil.
-- Para encajar los tres minutos, partir de una lección publicada. La creación completa con IA se demuestra después: la generación tarda unos 45 segundos en el equipo probado, además de la lectura y la revisión.
-- «Escuchar» sin Internet requiere una voz local instalada. Ensayar en el móvil concreto.
-- La afirmación de permanencia en el aula corresponde al despliegue local: sin túneles externos ni GPU remota durante la demostración.
+- El equipo comunicó una generación anterior de unos 45 s y una generación en francés de 103 s con la API multilingüe ya integrada. La respuesta a una duda tardó 5–10 s; no es un plazo garantizado.
+- El modelo ocupa unos 3,3 GB. El equipo midió 185/185 palabras en una foto realista y 184/185 en una muy mala, sin palabras inventadas en esas pruebas. No son métricas de exactitud general ni se han repetido aquí.
+- Si la respuesta en directo tarda, mostrar una de las dudas preparadas y decir expresamente que es de ejemplo. No simular una recepción.
+- «Escuchar» requiere voz local para funcionar offline. No es un cuarto paso de la nueva navegación.
+- Una demostración con movil.sh utiliza un túnel externo y necesita Internet para llegar al servidor; no equivale al despliegue enteramente local descrito en el discurso.
+
+- Selector de portada: cambia la interfaz; el idioma de la lección y su voz son independientes. En el paso 4 del profe se elige el idioma del contenido, que la API ya genera en esa lengua. Las dudas también se contestan en el idioma de la lección. Para una demo multilingüe fiable, usar las lecciones fr/en manuales de AULA23.
+- Francés e inglés revisados; las otras traducciones son borradores automáticos pendientes de revisión nativa. No presentar «23 idiomas» como 23 traducciones certificadas.
