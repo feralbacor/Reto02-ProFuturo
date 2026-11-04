@@ -145,7 +145,7 @@ async function prepararLeccion(item, alAvanzar) {
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id } })
 }
 
 let preparandoPendientes = false
@@ -578,9 +578,34 @@ const NIVELES = [
   { nombre: 'Básico', pista: 'Las ideas principales, con frases cortas.' },
   { nombre: 'Normal', pista: 'Lo que se espera en ese curso, con sus palabras técnicas explicadas.' },
   { nombre: 'Completo', pista: 'Todas las ideas del texto, con definiciones. Más largo.' },
-  { nombre: 'Avanzado', pista: 'Técnico y detallado: cómo funciona, tipos, causas y consecuencias. 8 preguntas.' },
-  { nombre: 'Experto', pista: 'Lo más extenso y técnico, con preguntas de razonar. 10 preguntas. Tarda más.' },
+  { nombre: 'Avanzado', pista: 'Técnico y detallado: cómo funciona, tipos, causas y consecuencias.' },
+  { nombre: 'Experto', pista: 'Lo más extenso y técnico. Tarda más.' },
 ]
+
+// Los mismos que DIFICULTAD_PREGUNTAS de api/main.py.
+const DIFICULTADES = [
+  { nombre: 'Muy fáciles', pista: 'Recordar un dato que sale tal cual en el texto.' },
+  { nombre: 'Fáciles', pista: 'Recordar y entender las ideas principales.' },
+  { nombre: 'Normales', pista: 'Entender lo que dice el texto, no copiar frases.' },
+  { nombre: 'Algo difíciles', pista: 'Relacionar ideas de distintas partes del texto.' },
+  { nombre: 'Difíciles', pista: 'Aplicar lo aprendido a un caso concreto o comparar conceptos.' },
+  { nombre: 'Muy difíciles', pista: 'Razonar en varios pasos, con casos nuevos y excepciones. Las opciones malas son casi correctas.' },
+]
+
+// Barra para elegir un valor de una lista (nivel, preguntas…), con los valores debajo para tocarlos.
+function Barra({ id, valores, valor, onCambio, disabled, nombre, extremos }) {
+  const i = Math.max(0, valores.indexOf(valor))
+  return (
+    <div className="barra-nivel">
+      <input id={id} type="range" min={0} max={valores.length - 1} step={1} value={i} onChange={e => onCambio(valores[Number(e.target.value)])}
+        disabled={disabled} aria-valuetext={nombre(valor)} />
+      <div className="barra-nivel-marcas" aria-hidden="true">
+        {valores.map(v => <button key={v} type="button" tabIndex={-1} onClick={() => onCambio(v)} disabled={disabled} className={v === valor ? 'elegido' : ''}>{v}</button>)}
+      </div>
+      <div className="barra-nivel-extremos" aria-hidden="true"><span>{extremos[0]}</span><span>{extremos[1]}</span></div>
+    </div>
+  )
+}
 
 function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
   const MAX_FOTOS = 5
@@ -598,6 +623,8 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
   const [ia, setIa] = useState(null)
   const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
   const [nivel, setNivel] = useState(inicial?.nivel ?? 2)
+  const [cuantas, setCuantas] = useState(inicial?.preguntas ?? 5)
+  const [dificultad, setDificultad] = useState(inicial?.dificultad_preguntas ?? 2)
 
   useEffect(() => {
     api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
@@ -655,7 +682,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
     setError('')
     setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
-    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
+    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, preguntas: cuantas, dificultad_preguntas: dificultad, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
@@ -689,7 +716,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>{t('La clase')}</Volver></header>
       <p className="subtitulo" style={{ margin: '0 0 4px' }}>{t(materia || 'General')}</p>
       <h1 className="titulo">{inicial ? t('Lección por preparar') : t('Nueva lección')}</h1>
-      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.')}</p>
+      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura, un ejemplo y las preguntas. Tú la revisas antes de publicarla.')}</p>
       {ia === 'apagada' && (
         <p className="aviso aviso-atencion"><strong>{t('La lectura de fotos está apagada')}</strong>{t('Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.')}</p>
       )}
@@ -738,19 +765,32 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
       <section className="seccion">
         <h2 className="paso-profe"><span className="paso-profe-num">3</span><label htmlFor="nivel-leccion">{t('El nivel')}</label></h2>
-        <div className="barra-nivel">
-          <input id="nivel-leccion" type="range" min={0} max={5} step={1} value={nivel} onChange={e => setNivel(Number(e.target.value))}
-            disabled={!!ocupado} aria-valuetext={`${nivel} · ${t(NIVELES[nivel].nombre)}`} />
-          <div className="barra-nivel-marcas" aria-hidden="true">
-            {NIVELES.map((n, i) => <button key={i} type="button" tabIndex={-1} onClick={() => setNivel(i)} disabled={!!ocupado} className={nivel === i ? 'elegido' : ''}>{i}</button>)}
-          </div>
-          <div className="barra-nivel-extremos" aria-hidden="true"><span>{t('Más corto y sencillo')}</span><span>{t('Más extenso y técnico')}</span></div>
-        </div>
+        <Barra id="nivel-leccion" valores={[0, 1, 2, 3, 4, 5]} valor={nivel} onCambio={setNivel} disabled={!!ocupado}
+          nombre={i => t(NIVELES[i].nombre)} extremos={[t('Más corto y sencillo'), t('Más extenso y técnico')]} />
         <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('Las preguntas')}</h2>
+        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cuántas')}</label>
+        <Barra id="cuantas-preguntas" valores={[0, 5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
+          nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('Sin preguntas'), t('30 preguntas')]} />
+        {cuantas > 0 && (
+          <>
+            <label htmlFor="dificultad-preguntas" className="etiqueta" style={{ fontSize: 17, marginTop: 18 }}>{t('Dificultad')}</label>
+            <Barra id="dificultad-preguntas" valores={[0, 1, 2, 3, 4, 5]} valor={dificultad} onCambio={setDificultad} disabled={!!ocupado}
+              nombre={i => t(DIFICULTADES[i].nombre)} extremos={[t('Muy fáciles'), t('Muy difíciles')]} />
+          </>
+        )}
+        <p className="pista">
+          {cuantas === 0 ? t('La lección no llevará test: solo la lectura y el ejemplo.')
+            : <><strong>{plural(cuantas, '{n} pregunta', '{n} preguntas')} · {t(DIFICULTADES[dificultad].nombre)}.</strong> {t(DIFICULTADES[dificultad].pista)}</>}
+          {cuantas >= 20 && ` ${t('Con muchas preguntas tarda más.')}`}
+        </p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
         <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
           {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
         </label>
@@ -762,7 +802,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">6</span>{t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>
@@ -855,7 +895,9 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Las preguntas')}</h2>
-        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')}</p>
+        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{leccion.preguntas.length
+          ? t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')
+          : t('Esta lección no lleva preguntas: los alumnos solo leen y ven el ejemplo.')}</p>
         {leccion.preguntas.map((p, i) => (
           <fieldset key={i} className="tarjeta" style={{ marginBottom: 16 }}>
             <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta {n}', { n: i + 1 })}</legend>
@@ -1436,10 +1478,11 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
   const [fallada, setFallada] = useState(null) // la opción del primer intento, si falló y hay pista
   const [aciertos, setAciertos] = useState(0)
   const [terminado, setTerminado] = useState(false)
-  const pregunta = preguntas[n]
+  const conTest = preguntas.length > 0 // el profe puede hacer lecciones sin preguntas
+  const pregunta = preguntas[n] || { pregunta: '', opciones: [], correcta: 0 }
   const acierto = elegida === pregunta.correcta
   // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
-  const pista = buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
+  const pista = conTest ? buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`) : []
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
@@ -1475,7 +1518,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
       <h1 className="titulo">{leccion.titulo}</h1>
 
       <nav className="pasos" aria-label={t('Pasos de la lección')}>
-        {[t('Leer'), t('Ejemplo'), t('Preguntas')].map((nombre, i) => (
+        {[t('Leer'), t('Ejemplo'), t('Preguntas')].slice(0, conTest ? 3 : 2).map((nombre, i) => (
           <button key={i} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
             className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {nombre}</button>
         ))}
@@ -1487,8 +1530,8 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} lengua={leccion.contenido.idioma} /></div>
             <p className="hoja-texto">{paso === 0 ? lectura_facil : explicacion_ejemplo}</p>
           </article>
-          <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
-            {paso === 0 ? t('Ya lo he leído') : t('Ir a las preguntas')}<Icono nombre="seguir" />
+          <button onClick={() => paso === 1 && !conTest ? onVolver() : irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
+            {paso === 0 ? t('Ya lo he leído') : conTest ? t('Ir a las preguntas') : t('Volver a mis lecciones')}<Icono nombre="seguir" />
           </button>
           <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>

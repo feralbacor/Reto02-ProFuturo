@@ -12,7 +12,8 @@ Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`.
 | `5ae19ea` | «Subir un archivo»: la lección se puede hacer con un PDF, Word, PowerPoint, LibreOffice o texto |
 | `343fa75` | Editar lecciones: publicadas y borradores también sin conexión, y las que esperan «Por preparar» |
 | `2c29a5e` | Unión con `main` (idiomas, dudas, tutor) |
-| (este) | Nivel de dificultad de la lección, de 0 a 5 |
+| `3ed1b14` | Nivel de dificultad de la lección, de 0 a 5 |
+| (este) | Cuántas preguntas (0 a 30) y su dificultad (0 a 5) |
 
 ## Archivos que se modifican
 
@@ -126,9 +127,25 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 
 **Probado con Qwen** (un tema de Arquitectura de Computadores de 3.º de carrera, PDF de 14 000 letras, Mac M3): nivel 1 en 45 s (115 palabras, 5 preguntas sencillas); nivel 5 en unos 5 min (419 palabras técnicas, 10 preguntas).
 
+## 7. Las preguntas: cuántas y de qué dificultad
+
+**Lo que ve el profe**
+- «Nueva lección» tiene ahora 6 pasos: 1 El título · 2 Las fotos o los archivos · 3 El nivel · **4 Las preguntas** · 5 El texto · 6 El idioma.
+- En «Las preguntas» hay dos barras como la del nivel:
+  - **Cuántas:** 0, 5, 10, 15, 20, 25 o 30 (por defecto, 5). Con 0, la lección no lleva test: el alumno lee, ve el ejemplo y «Volver a mis lecciones».
+  - **Dificultad**, de 0 a 5 (por defecto, 2): 0 Muy fáciles · 1 Fáciles · 2 Normales · 3 Algo difíciles · 4 Difíciles · 5 Muy difíciles. No sale si se eligen 0 preguntas.
+- La dificultad de las preguntas va aparte del nivel de la lección: se puede hacer una lección corta (nivel 1) con preguntas muy difíciles, o al revés. Y también es según el curso del texto.
+
+**API**
+- `POST /api/clases/{codigo}/lecciones` acepta `preguntas` (0 a 30, de 5 en 5) y `dificultad_preguntas` (0 a 5). Si no llegan, como antes: las del nivel. La lección guarda `dificultad_preguntas`.
+- Una lección válida puede tener ahora de 0 a 30 preguntas (antes de 1 a 10).
+- Con muchas preguntas el modelo repite alguna: `quitar_preguntas_malas()` quita las repetidas o con opciones repetidas y se queda el resto. Si quedan menos de la mitad de las pedidas, se intenta otra vez.
+
+**Probado con Qwen** (tu PDF de E/S, nivel 1, 15 preguntas): dificultad 0 en 89 s, quedaron 12 (3 repetidas fuera), con respuestas falsas evidentes; dificultad 5 en 161 s, las 15, con respuestas falsas parecidas a la buena.
+
 ## Cómo comprobarlo
 
-- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» «Leer archivos», «Idioma de la lección» y «Nivel de dificultad»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
+- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» «Leer archivos», «Idioma de la lección», «Nivel de dificultad» y «Número y dificultad de las preguntas»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
 - A mano, con la API en marcha y Ollama encendido:
   1. Entra en «Soy profe» y crea una cuenta. Recarga: sigues dentro, sin «Volver». «Salir» te lleva a «Entrar como profe».
   2. Crea una clase y una lección con título: la lección se llama así.

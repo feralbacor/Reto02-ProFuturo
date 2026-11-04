@@ -278,14 +278,16 @@ NIVELES = {
     4: (550, 850, "5 a 7", 8, "Avanzado: completo y técnico. Explica cómo funciona cada cosa, sus partes, sus tipos, causas y consecuencias, ventajas e inconvenientes, con el rigor del curso."),
     5: (800, 1200, "6 a 8", 10, "Experto: todo el contenido con el máximo detalle y precisión técnica del texto: mecanismos, pasos, casos, comparaciones y excepciones."),
 }
-TIPO_PREGUNTAS = {
-    0: "de recordar lo más importante",
-    1: "de recordar y entender",
-    2: "de entender lo que dice el texto",
-    3: "de entender y relacionar ideas",
-    4: "de entender, relacionar y aplicar a un caso concreto",
-    5: "de razonar y aplicar a casos concretos, no de memoria",
+# Dificultad de las preguntas 0-5, aparte del nivel de la lección (y también relativa al curso del texto).
+DIFICULTAD_PREGUNTAS = {
+    0: "muy fáciles: de recordar un dato que sale tal cual en el texto; las incorrectas se ven claramente falsas",
+    1: "fáciles: de recordar y entender las ideas principales; las incorrectas son fáciles de descartar",
+    2: "normales: de entender lo que dice el texto, no de copiar frases; las incorrectas son posibles",
+    3: "algo difíciles: de relacionar ideas de distintas partes del texto; las incorrectas se parecen a la buena",
+    4: "difíciles: de aplicar lo aprendido a un caso concreto o comparar conceptos; las incorrectas tienen errores sutiles",
+    5: "muy difíciles: de razonar en varios pasos, casos nuevos y excepciones, nada de memoria; las incorrectas son casi correctas y solo se descartan entendiendo bien el tema",
 }
+MAX_PREGUNTAS = 30
 
 PROMPT_LECCION = """Eres profesor. Con el TEXTO de abajo prepara una lección en {idioma}.
 Escribe TODO en {idioma} (título, lectura, ejemplo, preguntas y respuestas), aunque el TEXTO esté en otro idioma.
@@ -294,10 +296,7 @@ NIVEL {nivel} de 0 a 5 (0 = lo más corto y sencillo, 5 = lo más extenso y téc
 - "titulo": corto y claro.
 - "lectura_facil": la lección en sí, contada al NIVEL {nivel}: enseña tú el contenido, no digas «el texto explica» ni lo resumas desde fuera. {largo} Un párrafo para cada idea, separados con una línea en blanco. Usa solo información del texto: puedes explicar y desarrollar lo que dice, pero no añadas datos que no estén.
 - "explicacion_ejemplo": explica la idea principal con un ejemplo de la vida diaria, o un caso práctico real si el tema es técnico. De {frases} frases. El ejemplo tiene que ser cierto y tener sentido.
-- "preguntas": {n_preguntas} preguntas {tipo}, todas distintas entre sí, que se puedan contestar con el texto. Para cada una:
-  - "respuesta_correcta": la respuesta buena, corta, sacada del texto.
-  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.
-  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.
+{preguntas}
 
 TEXTO:
 <<<
@@ -382,7 +381,7 @@ def leccion_valida(l) -> bool:
         if not isinstance(l.get(clave), str) or not l[clave].strip():
             return False
     preguntas = l.get("preguntas")
-    if not isinstance(preguntas, list) or not 1 <= len(preguntas) <= 10:
+    if not isinstance(preguntas, list) or not 0 <= len(preguntas) <= MAX_PREGUNTAS:
         return False
     if len({str(p.get("pregunta", "")).strip().lower() for p in preguntas if isinstance(p, dict)}) != len(preguntas):
         return False  # preguntas repetidas
@@ -423,36 +422,58 @@ def juntar_opciones(leccion):
     return leccion
 
 
-def esquema_con_nivel(nivel):
-    """El esquema de siempre, con más preguntas y textos más largos según el nivel."""
-    n = NIVELES[nivel][3]
+def esquema_con_nivel(nivel, n, dificultad):
+    """El esquema de siempre, con el número de preguntas que pide el profe y sin largo máximo en los textos."""
     e = json.loads(json.dumps(ESQUEMA_LECCION))
     # Sin límite de largo en la lectura ni en el ejemplo: lo marca el nivel (en el prompt), no un corte.
     del e["properties"]["lectura_facil"]["maxLength"], e["properties"]["explicacion_ejemplo"]["maxLength"]
     e["properties"]["preguntas"]["minItems"] = e["properties"]["preguntas"]["maxItems"] = n
-    if nivel >= 3:  # en los niveles altos las respuestas técnicas son más largas (con 120 alguna salía cortada)
+    if max(nivel, dificultad) >= 3:  # las respuestas técnicas o difíciles son más largas (con 120 alguna salía cortada)
         p = e["properties"]["preguntas"]["items"]["properties"]
         p["respuesta_correcta"]["maxLength"] = p["incorrectas"]["items"]["maxLength"] = 200
     return e
 
 
-def crear_leccion_con_ia(texto, idioma="es", nivel=1):
-    min_palabras, max_palabras, frases, n_preguntas, como = NIVELES[nivel]
+def quitar_preguntas_malas(leccion):
+    """Con muchas preguntas, el modelo pequeño repite alguna o una opción: se quitan esas y se queda el resto."""
+    vistas, buenas = set(), []
+    for p in leccion.get("preguntas") or []:
+        if not isinstance(p, dict) or not isinstance(p.get("opciones"), list):
+            continue
+        clave = str(p.get("pregunta", "")).strip().lower()
+        opciones = {str(o).strip().lower() for o in p["opciones"]}
+        if clave and clave not in vistas and len(p["opciones"]) == 4 and len(opciones) == 4 and "" not in opciones:
+            vistas.add(clave)
+            buenas.append(p)
+    leccion["preguntas"] = buenas
+    return leccion
+
+
+def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificultad=None):
+    min_palabras, max_palabras, frases, n_por_nivel, como = NIVELES[nivel]
+    n_preguntas = n_por_nivel if n_preguntas is None else n_preguntas
+    dificultad = min(nivel, 5) if dificultad is None else dificultad
     largo = (f"Unas {min_palabras} a {max_palabras} palabras." if nivel < 3 else
              f"Como mínimo {min_palabras} palabras y sin máximo: extiéndete todo lo que dé de sí el texto.")
-    prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, largo=largo,
-                                   frases=frases, n_preguntas=n_preguntas, tipo=TIPO_PREGUNTAS[nivel])
+    preguntas = ('- "preguntas": una lista vacía [] (esta lección no lleva preguntas).' if n_preguntas == 0 else
+                 f'- "preguntas": {n_preguntas} preguntas {DIFICULTAD_PREGUNTAS[dificultad]} (DIFICULTAD {dificultad} de 0 a 5, '
+                 'para alumnos de ese curso). Todas distintas entre sí, sobre partes distintas del texto, y que se puedan contestar con el texto. Para cada una:\n'
+                 '  - "respuesta_correcta": la respuesta buena, corta, sacada del texto.\n'
+                 '  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.\n'
+                 '  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.')
+    prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, largo=largo, frases=frases, preguntas=preguntas)
     for _ in range(2):  # si sale mal, se intenta una vez más
         # Sin tope de palabras (-2: hasta llenar el contexto, así no se queda colgada repitiendo) y sin prisa:
         # un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
-        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel), max_tokens=-2, espera=1800)
+        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel, n_preguntas, dificultad), max_tokens=-2, espera=1800)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
             continue
-        leccion = juntar_opciones(leccion)
-        if leccion_valida(leccion):
-            return {**barajar_opciones(leccion), "idioma": idioma, "nivel": nivel}
+        leccion = quitar_preguntas_malas(juntar_opciones(leccion))
+        # Si al quitar las repetidas quedan menos de la mitad de las pedidas, se intenta otra vez.
+        if leccion_valida(leccion) and len(leccion["preguntas"]) * 2 >= n_preguntas:
+            return {**barajar_opciones(leccion), "idioma": idioma, "nivel": nivel, "dificultad_preguntas": dificultad}
     raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
 
 
@@ -956,6 +977,8 @@ class NuevaLeccion(BaseModel):
     materia: str = ""
     idioma: str = "es"
     nivel: int = 1  # dificultad de 0 a 5 (ver NIVELES); 1 es como eran antes las lecciones
+    preguntas: int | None = None  # cuántas preguntas, de 0 a 30 de 5 en 5; si no llega, las del nivel
+    dificultad_preguntas: int | None = None  # de 0 a 5 (ver DIFICULTAD_PREGUNTAS); si no llega, la del nivel
     titulo: str = ""  # si el profe lo escribe, se usa este; si no, el que pone la IA
     id: str | None = None  # la pone el móvil del profe: si la envía dos veces (sin conexión), no se duplica
 
@@ -977,7 +1000,12 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
     if datos.nivel not in NIVELES:
         raise HTTPException(400, "El nivel tiene que ser de 0 a 5.")
     # En los niveles altos se lee más del texto (un tema largo de universidad no cabe en 8000 letras).
-    leccion = crear_leccion_con_ia(texto[:8000 if datos.nivel < 3 else 20000], datos.idioma, datos.nivel)
+    if datos.preguntas is not None and (datos.preguntas not in range(0, MAX_PREGUNTAS + 1, 5)):
+        raise HTTPException(400, "El número de preguntas tiene que ser 0, 5, 10, 15, 20, 25 o 30.")
+    if datos.dificultad_preguntas is not None and datos.dificultad_preguntas not in DIFICULTAD_PREGUNTAS:
+        raise HTTPException(400, "La dificultad de las preguntas tiene que ser de 0 a 5.")
+    leccion = crear_leccion_con_ia(texto[:8000 if datos.nivel < 3 else 20000], datos.idioma, datos.nivel,
+                                   datos.preguntas, datos.dificultad_preguntas)
     if " ".join(datos.titulo.split()):
         leccion["titulo"] = " ".join(datos.titulo.split())[:120]
     leccion_id = datos.id or str(uuid.uuid4())

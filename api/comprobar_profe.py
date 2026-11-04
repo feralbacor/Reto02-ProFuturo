@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1: llamadas.append((texto, nivel)) or {**leccion, "idioma": idioma, "nivel": nivel}
+main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1, n=None, dif=None: llamadas.append((texto, nivel, n, dif)) or {**leccion, "idioma": idioma, "nivel": nivel}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
@@ -120,8 +120,22 @@ alto = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "ni
 assert alto["leccion"]["nivel"] == 5 and llamadas[-1][1] == 5
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None}, headers=sesion).json()["leccion"]["nivel"] == 1
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 6}, headers=sesion).status_code == 400
-assert main.esquema_con_nivel(5)["properties"]["preguntas"]["maxItems"] == 10 and main.ESQUEMA_LECCION["properties"]["preguntas"]["maxItems"] == 5
+assert main.esquema_con_nivel(5, 30, 2)["properties"]["preguntas"]["maxItems"] == 30 and main.ESQUEMA_LECCION["properties"]["preguntas"]["maxItems"] == 5
 for n in main.NIVELES:  # el prompt se puede rellenar en todos los niveles
-    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", largo="", frases="1", n_preguntas=5, tipo="")
-assert "maxLength" not in main.esquema_con_nivel(0)["properties"]["lectura_facil"]
+    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", largo="", frases="1", preguntas="")
+assert "maxLength" not in main.esquema_con_nivel(0, 5, 0)["properties"]["lectura_facil"]
 print("Nivel de dificultad: todo bien")
+
+# Preguntas: cuántas (0 a 30 de 5 en 5) y su dificultad (0 a 5) llegan a la IA; lo demás, 400.
+api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "preguntas": 30, "dificultad_preguntas": 5}, headers=sesion)
+assert llamadas[-1][2:] == (30, 5)
+api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "preguntas": 0}, headers=sesion)
+assert llamadas[-1][2:] == (0, None)
+for malo in ({"preguntas": 7}, {"preguntas": 35}, {"preguntas": -5}, {"dificultad_preguntas": 6}):
+    assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, **malo}, headers=sesion).status_code == 400, malo
+# Una lección sin preguntas es válida; las repetidas o con opciones repetidas se quitan.
+assert main.leccion_valida({**leccion, "preguntas": []})
+p = {"pregunta": "¿A?", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": ""}
+limpia = main.quitar_preguntas_malas({"preguntas": [p, dict(p, pregunta=" ¿a? "), dict(p, pregunta="¿B?", opciones=["1", "1", "3", "4"]), dict(p, pregunta="¿C?")]})
+assert [x["pregunta"] for x in limpia["preguntas"]] == ["¿A?", "¿C?"]
+print("Número y dificultad de las preguntas: todo bien")
