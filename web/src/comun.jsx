@@ -56,13 +56,16 @@ export function Icono({ nombre, tam = 24, className }) {
 // ---------- Utilidades ----------
 export const SIN_CONEXION = 'No hay conexión con el ordenador de la clase.'
 
-// Las rutas /api/clases/{codigo}/... del profe llevan solas el PIN de esa clase, si este aparato lo tiene.
+// Las rutas /api/clases/{codigo}/... del profe llevan solas el PIN de esa clase, si este aparato lo tiene,
+// y la sesión del profe que ha entrado en este aparato.
 export async function api(ruta, { method = 'GET', body } = {}) {
   const headers = {}
   if (body) headers['Content-Type'] = 'application/json'
   const codigo = ruta.match(/^\/api\/clases\/([^/?]+)/)?.[1]
   const pin = codigo && leer('pines-profe', {})[decodeURIComponent(codigo).toUpperCase()]
   if (pin) headers['X-Pin-Profe'] = pin
+  const sesion = /^\/api\/(clases|profes)\b/.test(ruta) && leer('profe-sesion', null)?.sesion
+  if (sesion) headers['X-Sesion-Profe'] = sesion
   let res
   try {
     res = await fetch(ruta, { method, headers, body: body ? JSON.stringify(body) : undefined })

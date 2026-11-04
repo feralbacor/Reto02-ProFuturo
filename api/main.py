@@ -2,6 +2,7 @@
 import base64
 import binascii
 import hashlib
+import hmac
 import json
 import os
 import random
@@ -79,6 +80,16 @@ CREATE TABLE IF NOT EXISTS cuentas_alumno (
     sal TEXT NOT NULL,
     hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cuentas_profe (
+    usuario TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    sal TEXT NOT NULL,
+    hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS clases_profe (
+    clase TEXT PRIMARY KEY REFERENCES clases(codigo),
+    profe TEXT NOT NULL REFERENCES cuentas_profe(usuario)
+);
 """
 
 
@@ -146,12 +157,39 @@ def comprobar_secreto(clave: str, secreto: str, fila, mensaje_malo: str):
     raise HTTPException(401, mensaje_malo)
 
 
-def comprobar_pin(codigo: str, x_pin_profe: str | None = Header(default=None)):
-    """Dependencia de las rutas del profe: necesitan {codigo} en la ruta y la cabecera X-Pin-Profe."""
+# ---------- Cuenta del profe ----------
+# La sesión es «usuario.firma», con la firma sacada del hash de su contraseña: no hace falta guardarla
+# y deja de valer si cambia la contraseña. El móvil la guarda para abrir sus clases también sin conexión.
+
+def firma_sesion(hash_guardado: str) -> str:
+    return hmac.new(bytes.fromhex(hash_guardado), b"sesion-profe", hashlib.sha256).hexdigest()
+
+
+def profe_de_sesion(sesion: str | None):
+    usuario, _, firma = (sesion or "").partition(".")
+    with closing(db()) as c:
+        fila = c.execute("SELECT hash FROM cuentas_profe WHERE usuario = ?", (usuario,)).fetchone()
+    return usuario if fila and secrets.compare_digest(firma, firma_sesion(fila["hash"])) else None
+
+
+def solo_con_sesion(x_sesion_profe: str | None = Header(default=None)) -> str:
+    usuario = profe_de_sesion(x_sesion_profe)
+    if not usuario:
+        raise HTTPException(401, "Entra con tu usuario de profe.")
+    return usuario
+
+
+def comprobar_pin(codigo: str, x_pin_profe: str | None = Header(default=None), x_sesion_profe: str | None = Header(default=None)):
+    """Dependencia de las rutas del profe: necesitan {codigo} en la ruta y la sesión del profe dueño o el PIN de la clase."""
     codigo = normalizar_codigo(codigo)
     with closing(db()) as c:
         fila = c.execute("SELECT sal, hash FROM pines_profe WHERE clase = ?", (codigo,)).fetchone()
+        dueno = c.execute("SELECT profe FROM clases_profe WHERE clase = ?", (codigo,)).fetchone()
+    if dueno and profe_de_sesion(x_sesion_profe) == dueno["profe"]:
+        return
     if not fila:
+        if dueno:
+            raise HTTPException(401, "Esta clase es de otro profe. Entra con tu usuario.")
         return
     if not x_pin_profe:
         raise HTTPException(401, "Esta clase tiene PIN: escríbelo para entrar.")
@@ -435,15 +473,16 @@ def salud():
 
 class NuevaClase(BaseModel):
     nombre: str
-    pin: str
+    pin: str = ""  # sin PIN solo si la crea un profe con su sesión: entonces la clase es suya
 
 
 @app.post("/api/clases")
-def crear_clase(datos: NuevaClase):
+def crear_clase(datos: NuevaClase, x_sesion_profe: str | None = Header(default=None)):
     nombre = datos.nombre.strip()[:60]
+    profe = profe_de_sesion(x_sesion_profe)
     if not nombre:
         raise HTTPException(400, "Escribe el nombre de la clase.")
-    if not re.fullmatch(r"\d{4,8}", datos.pin):
+    if not profe and not re.fullmatch(r"\d{4,8}", datos.pin):
         raise HTTPException(400, "El PIN tiene que tener entre 4 y 8 números.")
     with closing(db()) as c, c:
         while True:
@@ -451,20 +490,92 @@ def crear_clase(datos: NuevaClase):
             if not c.execute("SELECT 1 FROM clases WHERE codigo = ?", (codigo,)).fetchone():
                 break
         c.execute("INSERT INTO clases (codigo, nombre, creada) VALUES (?, ?, ?)", (codigo, nombre, ahora()))
-        guardar_pin(c, codigo, datos.pin)
+        if profe:
+            c.execute("INSERT INTO clases_profe (clase, profe) VALUES (?, ?)", (codigo, profe))
+        else:
+            guardar_pin(c, codigo, datos.pin)
     return {"codigo": codigo, "nombre": nombre}
+
+
+def resumen_clases(c, profe: str | None = None):
+    return [dict(f) for f in c.execute(f"""
+        SELECT c.codigo, c.nombre,
+               (SELECT COUNT(*) FROM matriculas m WHERE m.clase = c.codigo) AS alumnos,
+               (SELECT COUNT(*) FROM lecciones l WHERE l.clase = c.codigo) AS lecciones
+        FROM clases c {"WHERE c.codigo IN (SELECT clase FROM clases_profe WHERE profe = ?)" if profe else ""}
+        ORDER BY c.creada DESC
+    """, (profe,) if profe else ()).fetchall()]
 
 
 @app.get("/api/clases")
 def listar_clases():
     with closing(db()) as c:
-        filas = c.execute("""
-            SELECT c.codigo, c.nombre,
-                   (SELECT COUNT(*) FROM matriculas m WHERE m.clase = c.codigo) AS alumnos,
-                   (SELECT COUNT(*) FROM lecciones l WHERE l.clase = c.codigo) AS lecciones
-            FROM clases c ORDER BY c.creada DESC
-        """).fetchall()
-    return [dict(f) for f in filas]
+        return resumen_clases(c)
+
+
+class Entrar(BaseModel):
+    usuario: str
+    contrasena: str
+
+
+class NuevoProfe(BaseModel):
+    nombre: str
+    usuario: str
+    contrasena: str
+
+
+@app.post("/api/profes")
+def crear_profe(datos: NuevoProfe):
+    nombre = " ".join(datos.nombre.split())[:60]
+    usuario = normalizar_usuario(datos.usuario)
+    if not nombre:
+        raise HTTPException(400, "Escribe tu nombre.")
+    if not re.fullmatch(r"[a-z0-9]{3,20}", usuario):
+        raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
+    comprobar_contrasena(datos.contrasena)
+    sal = secrets.token_hex(16)
+    try:
+        with closing(db()) as c, c:
+            c.execute("INSERT INTO cuentas_profe (usuario, nombre, sal, hash) VALUES (?, ?, ?, ?)",
+                      (usuario, nombre, sal, hash_pin(datos.contrasena, sal)))
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, f"El usuario «{usuario}» ya existe. Elige otro.")
+    return {"usuario": usuario, "nombre": nombre, "sesion": f"{usuario}.{firma_sesion(hash_pin(datos.contrasena, sal))}"}
+
+
+@app.post("/api/profes/entrar")
+def entrar_profe(datos: Entrar):
+    usuario = normalizar_usuario(datos.usuario)
+    with closing(db()) as c:
+        fila = c.execute("SELECT usuario, nombre, sal, hash FROM cuentas_profe WHERE usuario = ?", (usuario,)).fetchone()
+    comprobar_secreto(f"profe:{usuario}", datos.contrasena, fila, "Usuario o contraseña incorrectos.")
+    return {"usuario": usuario, "nombre": fila["nombre"], "sesion": f"{usuario}.{firma_sesion(fila['hash'])}"}
+
+
+@app.get("/api/profes/clases")
+def clases_del_profe(profe: str = Depends(solo_con_sesion)):
+    with closing(db()) as c:
+        return resumen_clases(c, profe)
+
+
+class TraerClase(BaseModel):
+    codigo: str
+    pin: str
+
+
+@app.post("/api/profes/clases")
+def traer_clase(datos: TraerClase, profe: str = Depends(solo_con_sesion)):
+    """Una clase de antes (con PIN y sin dueño) pasa a la cuenta del profe que sabe su PIN."""
+    codigo = normalizar_codigo(datos.codigo)
+    with closing(db()) as c, c:
+        clase = buscar_clase(c, codigo)
+        fila = c.execute("SELECT sal, hash FROM pines_profe WHERE clase = ?", (codigo,)).fetchone()
+        dueno = c.execute("SELECT profe FROM clases_profe WHERE clase = ?", (codigo,)).fetchone()
+        if dueno and dueno["profe"] != profe:
+            raise HTTPException(409, "Esa clase ya es de otro profe.")
+        comprobar_secreto(f"clase:{codigo}", datos.pin, fila, "PIN incorrecto.")
+        c.execute("INSERT OR IGNORE INTO clases_profe (clase, profe) VALUES (?, ?)", (codigo, profe))
+    return dict(clase)
 
 
 @app.get("/api/clases/{codigo}", dependencies=SOLO_PROFE)
@@ -477,7 +588,7 @@ def ver_clase(codigo: str):
             WHERE m.clase = ? ORDER BY a.nombre COLLATE NOCASE
         """, (clase["codigo"],)).fetchall()
         lecciones = c.execute("""
-            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia
+            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia, contenido
             FROM lecciones WHERE clase = ? ORDER BY fecha DESC
         """, (clase["codigo"],)).fetchall()
         dudas = c.execute("""
@@ -486,7 +597,8 @@ def ver_clase(codigo: str):
             JOIN matriculas m ON m.alumno = d.alumno AND m.clase = l.clase
             WHERE l.clase = ? ORDER BY d.fecha DESC LIMIT 30
         """, (clase["codigo"],)).fetchall()
-    lecciones = [dict(l) for l in lecciones]
+    # Enteras, para que el profe las vea también sin conexión.
+    lecciones = [{**dict(l), "contenido": json.loads(l["contenido"])} for l in lecciones]
     return {
         **dict(clase),
         "alumnos": [dict(a) for a in alumnos],
@@ -531,11 +643,6 @@ def crear_alumno(datos: NuevoAlumno):
             c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
         guardar_contrasena(c, alumno_id, datos.contrasena, usuario)
     return {"id": alumno_id, "usuario": usuario, "nombre": nombre}
-
-
-class Entrar(BaseModel):
-    usuario: str
-    contrasena: str
 
 
 @app.post("/api/alumnos/entrar")
@@ -732,6 +839,8 @@ class NuevaLeccion(BaseModel):
     texto: str
     materia: str = ""
     idioma: str = "es"
+    titulo: str = ""  # si el profe lo escribe, se usa este; si no, el que pone la IA
+    id: str | None = None  # la pone el móvil del profe: si la envía dos veces (sin conexión), no se duplica
 
 
 @app.post("/api/clases/{codigo}/lecciones", dependencies=SOLO_PROFE)
@@ -739,12 +848,19 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
     texto = datos.texto.strip()
     if len(texto) < 40:
         raise HTTPException(400, "Hace falta más texto para preparar una lección.")
+    if datos.id is not None and not re.fullmatch(r"[0-9a-f-]{36}", datos.id):
+        raise HTTPException(400, "Id de lección no válido.")
     with closing(db()) as c:
         clase = buscar_clase(c, codigo)
+        hecha = datos.id and c.execute("SELECT contenido FROM lecciones WHERE id = ? AND clase = ?", (datos.id, clase["codigo"])).fetchone()
+    if hecha:
+        return {"id": datos.id, "leccion": json.loads(hecha["contenido"])}
     if datos.idioma not in IDIOMAS:
         raise HTTPException(400, "Ese idioma no está en la lista.")
     leccion = crear_leccion_con_ia(texto[:8000], datos.idioma)
-    leccion_id = str(uuid.uuid4())
+    if " ".join(datos.titulo.split()):
+        leccion["titulo"] = " ".join(datos.titulo.split())[:120]
+    leccion_id = datos.id or str(uuid.uuid4())
     with closing(db()) as c, c:
         leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
         c.execute(
