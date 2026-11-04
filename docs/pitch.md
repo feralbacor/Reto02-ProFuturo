@@ -10,13 +10,13 @@ Mochila permite llevar la clase en el dispositivo y continuar aprendiendo aunque
 
 ## 0:25–0:55 · Solución
 
-El profesor parte de una página del libro que ya utiliza. Fotografía la página, revisa el texto reconocido y elige la materia. Una IA local prepara una lectura sencilla, un ejemplo y cinco preguntas. El docente revisa el material antes de publicarlo.
+El profesor parte de una página de su libro. Fotografía la página, revisa el texto y elige materia e idioma de la lección. Una IA local prepara una lectura sencilla, un ejemplo y cinco preguntas. El docente revisa el material antes de publicarlo.
 
-El estudiante entra con usuario y contraseña. No pedimos email ni apellidos. Varios niños pueden compartir un móvil y cambiar de perfil al salir.
+La portada permite elegir idioma. El estudiante entra con usuario y contraseña. No pedimos email ni apellidos. Varios niños pueden compartir un móvil y cambiar de perfil al salir.
 
 ## 0:55–1:50 · Demo
 
-Mirad el móvil: esta lección ya está descargada. Tiene tres pasos: Leer, Ejemplo y Preguntas. Cortamos la conexión y seguimos trabajando. La corrección es inmediata y las respuestas se guardan en el móvil.
+Mirad el móvil: esta lección ya está descargada, también podemos abrir una en francés o inglés. Tiene tres pasos: Leer, Ejemplo y Preguntas. Cortamos la conexión y seguimos trabajando. La corrección es inmediata y las respuestas se guardan en el móvil.
 
 La alumna también puede pulsar «Tengo una duda». La escribe y el móvil muestra fragmentos relacionados de la lección, sin red ni IA. Si no encuentra ninguno, mantiene «Se enviará cuando haya conexión».
 
@@ -51,3 +51,6 @@ Notas fuera del discurso:
 - Si la respuesta en directo tarda, mostrar una de las dudas preparadas y decir expresamente que es de ejemplo. No simular una recepción.
 - «Escuchar» requiere voz local para funcionar offline. No es un cuarto paso de la nueva navegación.
 - Una demostración con movil.sh utiliza un túnel externo y necesita Internet para llegar al servidor; no equivale al despliegue enteramente local descrito en el discurso.
+
+- Selector de portada: cambia la interfaz; el idioma de la lección y su voz son independientes. En el paso 4 del profe se elige el idioma del contenido, cuya generación en la API aún debe integrarse y probarse. Para una demo multilingüe fiable, usar las lecciones fr/en manuales de AULA23.
+- Francés e inglés revisados; las otras traducciones son borradores automáticos pendientes de revisión nativa. No presentar «23 idiomas» como 23 traducciones certificadas.

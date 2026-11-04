@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as carpeta:
         c.executescript(main.TABLAS)
         demo.crear_demo(c)
     datos = panel.panel('aula23')
-    assert len(datos['alumnos']) == 6 and len(datos['lecciones']) == 2
+    assert len(datos['alumnos']) == 6 and len(datos['lecciones']) == 4
     assert [a['nombre'] for a in datos['alumnos'] if a['motivos']] == ['Diego', 'Elena']
     ana = demo.identificador('alumno-0')
     leccion = demo.identificador('leccion-0')
