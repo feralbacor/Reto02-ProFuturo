@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto: llamadas.append(texto) or dict(leccion)
+main.crear_leccion_con_ia = lambda texto, idioma="es": llamadas.append(texto) or {**leccion, "idioma": idioma}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
@@ -64,3 +64,9 @@ sin_titulo = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": Non
 assert sin_titulo["leccion"]["titulo"] == "Las plantas"
 assert {l["titulo"] for l in api.get(f"/api/clases/{suya}", headers=sesion).json()["lecciones"]} == {"Las plantas", "Mi título"}
 print("Título de la lección: todo bien")
+
+# Con main (idiomas): la lección va en el idioma elegido y conserva el título del profe; un idioma que no está, 400.
+fr = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titulo": "L'eau", "idioma": "fr"}, headers=sesion).json()
+assert fr["leccion"]["idioma"] == "fr" and fr["leccion"]["titulo"] == "L'eau"
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "idioma": "xx"}, headers=sesion).status_code == 400
+print("Idioma de la lección: todo bien")
