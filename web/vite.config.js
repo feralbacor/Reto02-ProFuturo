@@ -12,8 +12,8 @@ export default defineConfig({
         name: 'Mochila',
         short_name: 'Mochila',
         description: 'Aprender sin conexión',
-        theme_color: '#2563eb',
-        background_color: '#ffffff',
+        theme_color: '#f5f1e8',
+        background_color: '#f5f1e8',
         display: 'standalone',
         start_url: '/',
         icons: [
