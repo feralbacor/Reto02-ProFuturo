@@ -431,7 +431,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
       {pendientes.length > 0 && (
         <section className="seccion">
           <h2 className="seccion-titulo">Por preparar ({pendientes.length})</h2>
-          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Se prepararán solas cuando haya conexión con el ordenador de la clase. Después las revisas y las publicas.</p>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Se prepararán solas cuando haya conexión con el ordenador de la clase y su IA (Ollama) esté encendida. Después las revisas y las publicas.</p>
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
@@ -587,7 +587,9 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
         setOcupado('')
         return
       }
-      window.alert('Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.')
+      window.alert(e.message === SIN_CONEXION
+        ? 'Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.'
+        : `${e.message} La lección queda guardada y se preparará sola cuando la IA esté lista.`)
       onVolver()
     }
   }
