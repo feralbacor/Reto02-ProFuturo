@@ -28,7 +28,8 @@ function Volver({ onClick, disabled, children = 'Volver' }) {
 
 // ---------- Inicio ----------
 function App() {
-  const [vista, setVista] = useState('inicio')
+  // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
+  const [vista, setVista] = useState(() => leer('profe-sesion', null) ? 'profe' : 'inicio')
   const [conectado, setConectado] = useState(null)
 
   useEffect(() => {
@@ -152,7 +153,7 @@ function VistaProfe({ onVolver }) {
     return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
   }
   if (!sesion) return <ProfeEntrar onEntrar={(s) => { guardar('profe-sesion', s); setSesion(s) }} onVolver={onVolver} />
-  return <ProfeClases profe={sesion} onAbrir={abrirClase} onVolver={onVolver} onSalir={salir} />
+  return <ProfeClases profe={sesion} onAbrir={abrirClase} onSalir={salir} />
 }
 
 function ProfeEntrar({ onEntrar, onVolver }) {
@@ -210,7 +211,7 @@ function ProfeEntrar({ onEntrar, onVolver }) {
   )
 }
 
-function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
+function ProfeClases({ profe, onAbrir, onSalir }) {
   const [clases, setClases] = useState(() => leer('profe-clases', null)) // la copia de la última vez, al momento
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
@@ -258,8 +259,8 @@ function ProfeClases({ profe, onAbrir, onVolver, onSalir }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={onVolver} />
-        <button onClick={onSalir} className="boton boton-fantasma boton-pequeno"><Icono nombre="salir" />Salir</button>
+        <span className="marca">Mochila</span>
+        <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />Salir</button>
       </header>
       <h1 className="titulo">Hola, {profe.nombre}</h1>
       <p className="frase">Estas son tus clases. Cada una tiene un código: tus alumnos lo escriben para entrar.</p>
@@ -608,7 +609,14 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       )}
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">1</span>Las fotos de la página</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">1</span><label htmlFor="titulo-leccion">El título</label></h2>
+        <input id="titulo-leccion" className="campo" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120}
+          placeholder="Por ejemplo: Las ecuaciones" disabled={!!ocupado} />
+        <p className="pista">Si lo dejas vacío, Mochila le pone uno.</p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>Las fotos de la página</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />Hacer una foto</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />Elegir fotos</button>
@@ -636,7 +644,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{leidas ? 'Revisa el texto' : 'El texto'}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? 'Revisa el texto' : 'El texto'}</h2>
         <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
           {leidas ? 'Esto es lo que pone en las fotos. Corrige lo que haga falta.' : 'Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.'}
         </label>
@@ -646,18 +654,12 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">3</span>La materia</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span>La materia</h2>
         <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
           placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} aria-label="Materia" />
         <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
       </section>
 
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span><label htmlFor="titulo-leccion">El título</label></h2>
-        <input id="titulo-leccion" className="campo" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120}
-          placeholder="Por ejemplo: Las ecuaciones" disabled={!!ocupado} />
-        <p className="pista">Si lo dejas vacío, Mochila le pone uno.</p>
-      </section>
 
       <Aviso texto={error} />
       {!leyendo && espera}
