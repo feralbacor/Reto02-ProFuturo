@@ -207,6 +207,17 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
     }
   }
 
+  const cambiarRespuesta = async (d) => {
+    const nueva = window.prompt(`Tu respuesta a «${d.pregunta}»:`, d.respuesta || '')
+    if (!nueva?.trim()) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/dudas/${d.id}`, { method: 'PUT', body: { respuesta: nueva } })
+      cargar()
+    } catch (e) {
+      window.alert(e.message)
+    }
+  }
+
   const abrirLeccion = async (id) => {
     setAbriendo(true)
     try {
@@ -281,6 +292,26 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
           </div>
         ))}
       </section>
+
+      {clase.dudas?.length > 0 && (
+        <section className="seccion">
+          <h2 className="seccion-titulo">Dudas de tus alumnos</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Las contesta Mochila con lo que dice la lección. Si una respuesta no te convence, cámbiala: le llegará al alumno.</p>
+          {clase.dudas.map(d => (
+            <div key={d.id} className="tarjeta duda">
+              <p className="nota" style={{ marginTop: 0, marginBottom: 6 }}>{d.alumno} · {d.leccion} · {cuando(d.fecha)}</p>
+              <p className="duda-pregunta">{d.pregunta}</p>
+              {d.respuesta
+                ? <p className="duda-respuesta">{d.respuesta}</p>
+                : <p className="nota">Mochila todavía no la ha contestado.</p>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                {d.corregida ? <span className="insignia insignia-verde">Contestada por ti</span> : null}
+                <button onClick={() => cambiarRespuesta(d)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Cambiar la respuesta</button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="seccion">
         <h2 className="seccion-titulo">Alumnos ({clase.alumnos.length})</h2>
@@ -829,6 +860,8 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [leccion, setLeccion] = useState(null)
   const [actualizado, setActualizado] = useState(() => leer(clave('actualizado'), null))
   const [progreso, setProgreso] = useState(() => leer(clave('progreso'), {})) // { leccion_id: { empezada, hecha, aciertos, total } }
+  const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
+  const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -840,14 +873,20 @@ function AlumnoCasa({ alumno, onSalir }) {
     const quedan = leer('pendientes', []).filter(p => !recibidas.has(p.id))
     guardar('pendientes', quedan)
     setPendientes(quedan.length)
+    const dudasRecibidas = new Set(sw.dudas_recibidas || [])
+    const dudasQuedan = leer('dudas-pendientes', []).filter(d => !dudasRecibidas.has(d.id))
+    guardar('dudas-pendientes', dudasQuedan)
+    setDudasCola(dudasQuedan)
     for (const [id, d] of Object.entries(sw.alumnos || {})) {
       if (d.clases) {
         guardar(`clases:${id}`, d.clases)
         guardar(`version:${id}`, d.version)
       }
+      if (d.dudas) guardar(`dudas:${id}`, d.dudas)
       if (sw.fecha > (leer(`actualizado:${id}`, null) || '')) guardar(`actualizado:${id}`, sw.fecha)
     }
     setClases(leer(`clases:${alumno.id}`, []))
+    setDudas(leer(`dudas:${alumno.id}`, []))
     setActualizado(leer(`actualizado:${alumno.id}`, null))
   }, [alumno.id])
 
@@ -861,7 +900,10 @@ function AlumnoCasa({ alumno, onSalir }) {
     try {
       const r = await api('/api/sync', {
         method: 'POST',
-        body: { alumno_id: alumno.id, respuestas: enviadas, version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null },
+        body: {
+          alumno_id: alumno.id, respuestas: enviadas, dudas: leer('dudas-pendientes', []),
+          version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null,
+        },
       })
       const recibidas = new Set(r.recibidas)
       // Las respuestas que se dieron mientras se enviaba se quedan para la próxima vez.
@@ -872,6 +914,12 @@ function AlumnoCasa({ alumno, onSalir }) {
         setClases(r.clases)
         guardar(`clases:${alumno.id}`, r.clases) // así las lecciones se pueden usar sin conexión
       }
+      const dudasRecibidas = new Set(r.dudas_recibidas)
+      const dudasQuedan = leer('dudas-pendientes', []).filter(d => !dudasRecibidas.has(d.id))
+      guardar('dudas-pendientes', dudasQuedan)
+      setDudasCola(dudasQuedan)
+      guardar(`dudas:${alumno.id}`, r.dudas)
+      setDudas(r.dudas)
       guardar(`version:${alumno.id}`, r.version)
       const ahora = new Date().toISOString()
       guardar(`actualizado:${alumno.id}`, ahora)
@@ -883,6 +931,14 @@ function AlumnoCasa({ alumno, onSalir }) {
       enCurso.current = false
     }
   }, [alumno.id, recoger])
+
+  // Mientras espera la respuesta a una duda, pregunta cada 5 segundos en vez de cada 30.
+  const esperando = dudasCola.some(d => d.alumno === alumno.id) || dudas.some(d => !d.respuesta)
+  useEffect(() => {
+    if (!esperando) return undefined
+    const t = setInterval(sincronizar, 5000)
+    return () => clearInterval(t)
+  }, [esperando, sincronizar])
 
   useEffect(() => {
     sincronizar()
@@ -911,6 +967,19 @@ function AlumnoCasa({ alumno, onSalir }) {
     setProgreso(nuevo)
   }
 
+  // La duda se guarda en el móvil y viaja con la sincronización: sirve también sin conexión.
+  const preguntar = (leccionId, pregunta) => {
+    const cola = [...leer('dudas-pendientes', []), { id: nuevoId(), alumno: alumno.id, leccion_id: leccionId, pregunta, fecha: new Date().toISOString() }]
+    guardar('dudas-pendientes', cola)
+    setDudasCola(cola)
+    sincronizar()
+  }
+  const dudasDe = (leccionId) => {
+    const delServidor = dudas.filter(d => d.leccion_id === leccionId)
+    const ids = new Set(delServidor.map(d => d.id))
+    return [...delServidor, ...dudasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id))]
+  }
+
   if (otraClase) {
     return <AlumnoOtraClase alumno={alumno} onVolver={() => setOtraClase(false)} onDentro={() => { setOtraClase(false); sincronizar() }} />
   }
@@ -922,7 +991,8 @@ function AlumnoCasa({ alumno, onSalir }) {
         {barra}
         <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
           onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
-          onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }} />
+          onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} />
       </>
     )
   }
@@ -968,6 +1038,7 @@ function AlumnoCasa({ alumno, onSalir }) {
                               {p?.hecha
                                 ? <span className="descargada"><Icono nombre="bien" tam={18} />Hecha · {p.aciertos} de {p.total}</span>
                                 : <span>{p?.empezada ? 'Empezada' : 'Sin empezar'}</span>}
+                              {dudasDe(l.id).length > 0 && <span className="descargada" style={{ color: 'var(--ocre)' }}><Icono nombre="duda" tam={18} />{plural(dudasDe(l.id).filter(d => d.respuesta).length, 'duda contestada', 'dudas contestadas')}</span>}
                             </span>
                           </span>
                           {l.id === toca ? <span className="insignia insignia-amarilla">Te toca</span> : <Icono nombre="seguir" className="icono-final" />}
@@ -1029,7 +1100,7 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
 }
 
 // La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar }) {
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
   const [paso, setPaso] = useState(0)
   const [n, setN] = useState(0)
@@ -1086,6 +1157,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
           <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
             {paso === 0 ? 'Ya lo he leído' : 'Ir a las preguntas'}<Icono nombre="seguir" />
           </button>
+          <Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} />
         </>
       )}
 
@@ -1102,6 +1174,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
             <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">Volver a leer</button>
           </div>
           <p className="nota">Tus respuestas le llegan a tu profe cuando hay conexión.</p>
+          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
         </div>
       )}
 
@@ -1141,6 +1214,56 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
         </>
       )}
     </div>
+  )
+}
+
+// «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
+// de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
+function Dudas({ dudas, sinConexion, onPreguntar }) {
+  const [abierta, setAbierta] = useState(false)
+  const [texto, setTexto] = useState('')
+
+  const enviar = (ev) => {
+    ev.preventDefault()
+    onPreguntar(texto.trim())
+    setTexto('')
+    setAbierta(false)
+  }
+
+  return (
+    <section className="seccion">
+      {dudas.length > 0 && (
+        <>
+          <h2 className="seccion-titulo">Mis dudas</h2>
+          <div style={{ marginBottom: 16 }}>
+            {dudas.map(d => (
+              <div key={d.id} className="tarjeta duda">
+                <p className="duda-pregunta">{d.pregunta}</p>
+                {d.respuesta
+                  ? <p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p>
+                  : <p className="nota">{sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {abierta
+        ? (
+          <form onSubmit={enviar} className="formulario">
+            <div className="campo-grupo">
+              <label htmlFor="duda-texto" className="etiqueta">¿Qué no has entendido?</label>
+              <textarea id="duda-texto" className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
+                style={{ minHeight: 110 }} />
+              <p className="pista">Pregunta sobre esta lección. Te contesta Mochila con lo que dice la lección, y tu profe también lo verá.</p>
+            </div>
+            <div className="botones-fila">
+              <button type="button" onClick={() => setAbierta(false)} className="boton boton-fantasma">Cancelar</button>
+              <button type="submit" disabled={texto.trim().length < 3} className="boton boton-secundario">Enviar mi duda</button>
+            </div>
+          </form>
+        )
+        : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />Tengo una duda</button>}
+    </section>
   )
 }
 

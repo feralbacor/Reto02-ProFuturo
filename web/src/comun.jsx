@@ -42,6 +42,7 @@ const TRAZOS = {
   salir: 'M14 5h5v14h-5 M10 8l-4 4 4 4 M6 12h10',
   buscar: 'M20 12a8 8 0 1 1-2.4-5.7 M20 4v4.5h-4.5',
   notas: 'M5 19V11 M10 19V5 M15 19v-6 M20 19V9',
+  duda: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.5 M12 16.8h.01',
 }
 export function Icono({ nombre, tam = 24, className }) {
   return (
@@ -85,7 +86,7 @@ export function leer(clave, porDefecto) {
 }
 export function guardar(clave, valor) {
   try { localStorage.setItem(clave, JSON.stringify(valor)) } catch { /* sin espacio o bloqueado */ }
-  if (clave === 'pendientes' || clave === 'perfiles' || /^(clases|version):/.test(clave)) espejar()
+  if (clave === 'pendientes' || clave === 'dudas-pendientes' || clave === 'perfiles' || /^(clases|version):/.test(clave)) espejar()
 }
 
 // Para entrar sin conexión: hash de la contraseña guardado en el aparato (WebCrypto, solo con https o localhost).
@@ -107,14 +108,16 @@ export async function espejar() {
   try {
     const perfiles = leer('perfiles', [])
     const pendientes = leer('pendientes', [])
+    const dudas = leer('dudas-pendientes', [])
     await (await caches.open(ESPEJO)).put('/espejo/pagina.json', new Response(JSON.stringify({
       perfiles: perfiles.map(p => ({ id: p.id, version: leer(`clases:${p.id}`, null) ? leer(`version:${p.id}`, null) : null })),
       pendientes,
+      dudas,
     })))
     if (!perfiles.length || !navigator.serviceWorker?.controller) return
     const sw = await navigator.serviceWorker.ready
     // Enviar al volver la red aunque la app esté cerrada (Chrome y Android; Safari no lo tiene).
-    if (pendientes.length) await sw.sync?.register('mochila')
+    if (pendientes.length || dudas.length) await sw.sync?.register('mochila')
     // Buscar lecciones nuevas de vez en cuando con la app cerrada (solo si está instalada; el navegador decide cuándo).
     await sw.periodicSync?.register('mochila', { minInterval: 60 * 60 * 1000 })
   } catch { /* sin caché, sin permiso o sin service worker: la página sincroniza mientras está abierta */ }

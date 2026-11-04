@@ -17,22 +17,27 @@ async function sincronizarEnSegundoPlano() {
   // Lo de una vez anterior que la página aún no ha recogido
   const previo = (await leerEspejo('/espejo/sw.json')) || { recibidas: [], alumnos: {} }
   const recibidas = new Set(previo.recibidas)
+  const dudasRecibidas = new Set(previo.dudas_recibidas || [])
   const alumnos = { ...previo.alumnos }
   let porEnviar = pagina.pendientes.filter(p => !recibidas.has(p.id))
+  let dudasPorEnviar = (pagina.dudas || []).filter(d => !dudasRecibidas.has(d.id))
   for (const { id, version } of pagina.perfiles) {
     const res = await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ alumno_id: id, respuestas: porEnviar, version: alumnos[id] ? alumnos[id].version : version }),
+      body: JSON.stringify({ alumno_id: id, respuestas: porEnviar, dudas: dudasPorEnviar, version: alumnos[id] ? alumnos[id].version : version }),
     })
     if (!res.ok) throw new Error(`/api/sync ${res.status}`) // así el navegador lo reintenta más tarde
     const r = await res.json()
     r.recibidas.forEach(x => recibidas.add(x))
+    ;(r.dudas_recibidas || []).forEach(x => dudasRecibidas.add(x))
     porEnviar = []
-    alumnos[id] = { clases: r.clases ?? alumnos[id]?.clases ?? null, version: r.version }
+    dudasPorEnviar = []
+    alumnos[id] = { clases: r.clases ?? alumnos[id]?.clases ?? null, version: r.version, dudas: r.dudas }
   }
   await (await caches.open(ESPEJO)).put('/espejo/sw.json', new Response(JSON.stringify({
     recibidas: [...recibidas],
+    dudas_recibidas: [...dudasRecibidas],
     alumnos,
     fecha: new Date().toISOString(),
   })))

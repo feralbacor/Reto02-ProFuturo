@@ -195,6 +195,11 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 .resultado-cifra { font-size: 68px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
 .resultado-texto { font-size: 21px; color: var(--tinta-media); margin: 14px auto 28px; max-width: 22em; }
 
+/* Dudas: la pregunta del estudiante y, debajo, la respuesta con una raya amarilla al lado. */
+.duda + .duda { margin-top: 12px; }
+.duda-pregunta { font-size: 19px; font-weight: 700; line-height: 1.35; }
+.duda-respuesta { margin-top: 10px; padding-left: 12px; border-left: 4px solid var(--amarillo); font-size: 19px; line-height: 1.55; color: var(--tinta-media); }
+
 /* ---------- Profe ---------- */
 .codigo-clase { text-align: center; padding: 18px; background: var(--superficie); border: 1px dashed var(--borde-fuerte); border-radius: 14px; }
 .codigo-clase-texto { display: block; font-family: var(--mono); font-size: 44px; font-weight: 700; letter-spacing: 0.16em; margin-top: 4px; }
