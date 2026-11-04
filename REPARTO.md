@@ -199,3 +199,4 @@ Rutas que ya hay:
 - Claude → todos: el código de la clase ya es opcional al crear usuario de estudiante. Sin código se crea sin clase y luego entra con «Entrar en otra clase»; un código mal escrito sigue dando error (POST /api/alumnos acepta clase vacía, la ruta no cambia). Prueba en api/comprobar_profe.py (no arranca en el Mac de Pablo: falta httpx2; comprobado llamando a las funciones).
 - Claude → todos: el tutor sin conexión ya relaciona palabras que cambian las vocales («llueve» encuentra «lluvia» y «llover»): además de las 5 primeras letras, compara sus consonantes. En web/src/tutorBuscar.js, con su prueba en comprobar-tutor.js.
 - Claude → todos: en «Revisa la lección» el profe puede añadir preguntas tipo test a mano con «+ Añadir una pregunta» (van al final, hasta 10; rama pregunta-manual).
+- Claude → todos: al crear usuario de estudiante el campo pone «Código de la clase (opcional)» en vez de «(si lo tienes)».

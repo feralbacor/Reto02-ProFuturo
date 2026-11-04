@@ -899,7 +899,7 @@ function CampoContrasena({ id, valor, onCambio, nueva = false, autoFocus = false
 function CampoCodigo({ valor, onCambio, opcional = false }) {
   return (
     <div className="campo-grupo">
-      <label htmlFor="codigo-clase" className="etiqueta">{opcional ? t('Código de la clase (si lo tienes)') : t('Código de la clase')}</label>
+      <label htmlFor="codigo-clase" className="etiqueta">{opcional ? t('Código de la clase (opcional)') : t('Código de la clase')}</label>
       <input id="codigo-clase" className="campo campo-codigo" value={valor} onChange={e => onCambio(e.target.value.toUpperCase())} maxLength={12}
         autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
       <p className="pista">{t('Son 6 letras y números. Te lo dice tu profe.')}{opcional && ` ${t('Si no lo tienes, déjalo vacío: podrás entrar en tu clase más tarde.')}`}</p>
