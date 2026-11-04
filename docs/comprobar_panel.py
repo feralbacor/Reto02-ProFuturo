@@ -1,5 +1,6 @@
 """Desde la raíz: api/.venv/bin/python docs/comprobar_panel.py. No cambia datos reales."""
 import os
+import asyncio
 import sqlite3
 import sys
 import tempfile
@@ -11,6 +12,20 @@ import main
 import demo
 import panel
 from fastapi import HTTPException
+
+async def borrar_por_api(codigo, alumno, pin=None):
+    mensajes = []
+    async def recibir():
+        return {'type': 'http.request', 'body': b'', 'more_body': False}
+    async def enviar(mensaje):
+        mensajes.append(mensaje)
+    ruta = f'/api/clases/{codigo}/alumnos/{alumno}'
+    await main.app({'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
+                    'method': 'DELETE', 'scheme': 'http', 'path': ruta, 'raw_path': ruta.encode(),
+                    'query_string': b'', 'root_path': '', 'server': ('test', 80), 'client': ('test', 1),
+                    'headers': [] if pin is None else [(b'x-pin-profe', pin.encode())]}, recibir, enviar)
+    return next(m['status'] for m in mensajes if m['type'] == 'http.response.start')
+
 
 with tempfile.TemporaryDirectory() as carpeta:
     panel.DB_PATH = os.path.join(carpeta, 'prueba.db')
@@ -48,4 +63,42 @@ with tempfile.TemporaryDirectory() as carpeta:
         assert e.status_code == 404
     # La ruta está registrada; no hace falta arrancar un servidor.
     assert '/api/clases/{codigo}/panel' in main.app.openapi()['paths']
-print('Panel correcto: notas, repeticiones, husos, aislamiento, inactividad, clase vacía y 404.')
+    # La baja afecta solo a esta matrícula y a sus respuestas, incluso de lecciones sin publicar.
+    original = main.DB_PATH
+    main.DB_PATH = panel.DB_PATH
+    try:
+        with sqlite3.connect(panel.DB_PATH) as c:
+            c.execute('INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)', ('OTRA12', ana, datetime.now().isoformat()))
+            c.execute("INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) SELECT 'otra-leccion', 'OTRA12', titulo, contenido, fecha, 1 FROM lecciones LIMIT 1")
+            c.execute("INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES ('otra-respuesta', ?, 'otra-leccion', 0, 0, ?)", (ana, datetime.now().isoformat()))
+            c.execute("INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) SELECT 'borrador', 'AULA23', titulo, contenido, fecha, 0 FROM lecciones LIMIT 1")
+            c.execute("INSERT INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES ('respuesta-borrador', ?, 'borrador', 0, 0, ?)", (ana, datetime.now().isoformat()))
+            antes = '\n'.join(c.iterdump())
+        assert asyncio.run(borrar_por_api('AULA23', ana)) == 401
+        assert asyncio.run(borrar_por_api('AULA23', ana, '0000')) == 401
+        with sqlite3.connect(panel.DB_PATH) as c:
+            assert '\n'.join(c.iterdump()) == antes
+            # Si falla la segunda escritura, también se deshace la eliminación de respuestas.
+            c.execute("CREATE TRIGGER fallo_baja BEFORE DELETE ON matriculas BEGIN SELECT RAISE(ABORT, 'fallo simulado'); END")
+        try:
+            panel.quitar_alumno('AULA23', ana)
+            raise AssertionError('Debe fallar la matrícula')
+        except sqlite3.IntegrityError:
+            pass
+        with sqlite3.connect(panel.DB_PATH) as c:
+            c.execute('DROP TRIGGER fallo_baja')
+            assert '\n'.join(c.iterdump()) == antes
+        assert asyncio.run(borrar_por_api('aula23', ana, '1234')) == 200
+        assert asyncio.run(borrar_por_api('AULA23', ana, '1234')) == 404
+        assert asyncio.run(borrar_por_api('NOEXIS', ana, '1234')) == 404
+        with sqlite3.connect(panel.DB_PATH) as c:
+            assert not c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', ('AULA23', ana)).fetchone()
+            assert not c.execute('SELECT 1 FROM respuestas r JOIN lecciones l ON l.id = r.leccion_id WHERE l.clase = ? AND r.alumno = ?', ('AULA23', ana)).fetchone()
+            assert c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', ('OTRA12', ana)).fetchone()
+            assert c.execute("SELECT 1 FROM respuestas WHERE id = 'otra-respuesta'").fetchone()
+            assert c.execute('SELECT COUNT(*) FROM respuestas WHERE alumno = ?', (demo.identificador('alumno-1'),)).fetchone()[0] == 10
+        assert main.entrar_alumno(main.Entrar(usuario='aula23ana', contrasena='1234'))['id'] == ana
+        assert not any(a['id'] == ana for a in panel.panel('AULA23')['alumnos'])
+    finally:
+        main.DB_PATH = original
+print('Panel correcto: notas, baja con PIN, aislamiento, cuenta conservada, rollback y 404.')

@@ -1,5 +1,7 @@
 # Mochila · Guion de demostración
 
+> Textos provisionales: Claude está rediseñando pantallas y botones. Esperar su lista nueva y contrastar este guion con la versión integrada antes de cerrar el ensayo.
+
 ## Reparto y estado de este guion
 
 - **Profe / presentador:** portátil del aula, con la aplicación, la API y Ollama local preparados.
