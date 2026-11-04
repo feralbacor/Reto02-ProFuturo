@@ -401,3 +401,9 @@ def guardar_leccion(leccion_id: str, datos: GuardarLeccion):
     if not cambiadas:
         raise HTTPException(404, "Lección no encontrada.")
     return {"ok": True}
+
+
+# Panel de notas: es de ChatGPT (ver REPARTO.md). Sus rutas están en panel.py.
+from panel import router as router_panel  # noqa: E402
+
+app.include_router(router_panel)

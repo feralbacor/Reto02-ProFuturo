@@ -1,5 +1,7 @@
 # Mochila — la clase que funciona sin internet
 
+> **Antes de tocar nada, lee `REPARTO.md`**: dos IAs trabajan a la vez en esta carpeta y cada una solo edita sus archivos.
+
 Hackathon, Reto 02 de ProFuturo «Aprender sin conexión». Tenemos **2 días**.
 Lo que importa es una demo que funcione de principio a fin, no tener muchas funciones.
 
