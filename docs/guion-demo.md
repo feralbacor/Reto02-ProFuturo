@@ -68,4 +68,4 @@ El service worker conserva las respuestas y dudas pendientes mediante el espejo 
 
 El botón «Quitar de la clase» elimina matrícula, respuestas y dudas de esa clase; conserva la cuenta y las demás clases. No es una lista de bloqueo permanente: conservar el código puede permitir reinscribirse.
 
-Antes de presentar, ejecutar las comprobaciones y confirmar la compilación. En esta entrega falta instalar localmente la dependencia de fuente ya declarada por Claude; ver Peticiones. No arrancar servidores desde el agente ni afirmar que el móvil real está probado hasta completar ensayo.md.
+Antes de presentar, ejecutar las comprobaciones y confirmar la compilación. Dependencias sincronizadas con autorización de Fernando: comprobaciones de demo y panel y build de producción correctos. No arrancar servidores desde el agente ni afirmar que el móvil real está probado hasta completar ensayo.md.
