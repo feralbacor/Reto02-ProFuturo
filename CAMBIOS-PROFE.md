@@ -11,6 +11,8 @@ Todo está en la rama **`profe-sin-conexion`**, que sale de `main` en `7bf15d1`.
 | `be44489` | El título es el paso 1 de «Nueva lección». El profe solo sale de sus clases con «Salir» |
 | `5ae19ea` | «Subir un archivo»: la lección se puede hacer con un PDF, Word, PowerPoint, LibreOffice o texto |
 | `343fa75` | Editar lecciones: publicadas y borradores también sin conexión, y las que esperan «Por preparar» |
+| `2c29a5e` | Unión con `main` (idiomas, dudas, tutor) |
+| (este) | Nivel de dificultad de la lección, de 0 a 5 |
 
 ## Archivos que se modifican
 
@@ -105,9 +107,24 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 **Web (`App.jsx`)**
 - Cola nueva en `localStorage`: `profe-cambios`, con el último cambio de cada lección (`{id, codigo, leccion, publicar}`). Se envía con el `PUT /api/clases/{codigo}/lecciones/{id}` de siempre: la API no cambia.
 
+## 6. Nivel de dificultad (0 a 5)
+
+**Lo que ve el profe**
+- En «Nueva lección», paso 5 **«El nivel»**: seis botones del 0 al 5 (por defecto, 2). Debajo dice qué es cada uno: 0 Lo esencial · 1 Básico · 2 Normal · 3 Completo · 4 Avanzado · 5 Experto. El idioma pasa a ser el paso 6.
+- Cuanto más alto, **más larga y más técnica**: la lectura va de 60–120 palabras (0) a 800–1200 (5), el ejemplo es un caso práctico real si el tema es técnico, y las preguntas pasan de 5 de recordar a 10 de razonar y aplicar.
+- **El nivel va según el tema**: la IA mira primero para qué curso es el texto (primaria, ESO, bachillerato, FP o universidad) y el nivel sube o baja dentro de ese curso. Un 4 de 2.º de la ESO es más fácil que un 2 de 3.º de carrera.
+- Las lecciones «por preparar» guardan su nivel.
+
+**API (`api/main.py`)**
+- `POST /api/clases/{codigo}/lecciones` acepta `nivel` (0 a 5; si no llega, 1, como eran antes). Se guarda en `contenido.nivel`.
+- `NIVELES` y `TIPO_PREGUNTAS` dicen cómo es cada nivel. `esquema_con_nivel()` cambia el número de preguntas y el largo máximo.
+- Del nivel 3 al 5 se leen hasta 20 000 letras del texto (antes 8 000), y la IA puede tardar hasta 10 minutos.
+
+**Probado con Qwen** (un tema de Arquitectura de Computadores de 3.º de carrera, PDF de 14 000 letras, Mac M3): nivel 1 en 45 s (115 palabras, 5 preguntas sencillas); nivel 5 en unos 5 min (419 palabras técnicas, 10 preguntas).
+
 ## Cómo comprobarlo
 
-- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» y «Leer archivos»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
+- Pruebas: `cd api && .venv/bin/python comprobar_profe.py` → «Cuentas de profe», «Lecciones del profe sin conexión» y «Título de la lección» «Leer archivos», «Idioma de la lección» y «Nivel de dificultad»: todo bien. Necesita `httpx` en el `.venv` (`pip install httpx`).
 - A mano, con la API en marcha y Ollama encendido:
   1. Entra en «Soy profe» y crea una cuenta. Recarga: sigues dentro, sin «Volver». «Salir» te lleva a «Entrar como profe».
   2. Crea una clase y una lección con título: la lección se llama así.
@@ -122,4 +139,5 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - La API necesita **Python 3.11** (`api/.venv`). Con el Python 3.9 de Xcode no arranca y la web se queda cargando.
 - **Librería nueva: `pypdf`**, solo para los PDF. En cada ordenador que arranque la API: `cd api && source .venv/bin/activate && pip install pypdf`. Sin ella, todo lo demás funciona y al subir un PDF sale «Para leer PDF falta pypdf…».
 - Para leer fotos y preparar lecciones hace falta **Ollama** encendido con `qwen3-vl:4b-instruct`.
+- **Niveles altos y túnel de Cloudflare:** el túnel corta las peticiones que tardan más de unos 100 s. Desde el móvil por el túnel, los niveles 4 y 5 pueden acabar en «Por preparar» y reintentarse. En el Mac (localhost) no pasa.
 - Sin hacer: preparar lecciones o enviar cambios con la app cerrada y un tiempo máximo de espera si el servidor no contesta.

@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto, idioma="es": llamadas.append(texto) or {**leccion, "idioma": idioma}
+main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1: llamadas.append((texto, nivel)) or {**leccion, "idioma": idioma, "nivel": nivel}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
@@ -114,3 +114,13 @@ fr = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titu
 assert fr["leccion"]["idioma"] == "fr" and fr["leccion"]["titulo"] == "L'eau"
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "idioma": "xx"}, headers=sesion).status_code == 400
 print("Idioma de la lección: todo bien")
+
+# Nivel de dificultad: de 0 a 5 (por defecto 1, como antes); llega a la IA y se guarda en la lección.
+alto = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 5}, headers=sesion).json()
+assert alto["leccion"]["nivel"] == 5 and llamadas[-1][1] == 5
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None}, headers=sesion).json()["leccion"]["nivel"] == 1
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 6}, headers=sesion).status_code == 400
+assert main.esquema_con_nivel(5)["properties"]["preguntas"]["maxItems"] == 10 and main.ESQUEMA_LECCION["properties"]["preguntas"]["maxItems"] == 5
+for n in main.NIVELES:  # el prompt se puede rellenar en todos los niveles
+    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", min_palabras=1, max_palabras=2, frases="1", n_preguntas=5, tipo="")
+print("Nivel de dificultad: todo bien")

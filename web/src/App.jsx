@@ -143,7 +143,7 @@ async function prepararLeccion(item, alAvanzar) {
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, id: item.id } })
 }
 
 let preparandoPendientes = false
@@ -578,6 +578,16 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
   )
 }
 
+// Los mismos niveles que NIVELES de api/main.py: de lo más corto y sencillo a lo más extenso y técnico, según el tema.
+const NIVELES = [
+  { nombre: 'Lo esencial', pista: 'Solo la idea principal, muy corta y muy sencilla.' },
+  { nombre: 'Básico', pista: 'Las ideas principales, con frases cortas.' },
+  { nombre: 'Normal', pista: 'Lo que se espera en ese curso, con sus palabras técnicas explicadas.' },
+  { nombre: 'Completo', pista: 'Todas las ideas del texto, con definiciones. Más largo.' },
+  { nombre: 'Avanzado', pista: 'Técnico y detallado: cómo funciona, tipos, causas y consecuencias. 8 preguntas.' },
+  { nombre: 'Experto', pista: 'Lo más extenso y técnico, con preguntas de razonar. 10 preguntas. Tarda más.' },
+]
+
 function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   const MAX_FOTOS = 5
   // inicial: una lección «por preparar» que se edita (con su id, para que no se duplique).
@@ -595,6 +605,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   const [materias, setMaterias] = useState([])
   const [ia, setIa] = useState(null)
   const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
+  const [nivel, setNivel] = useState(inicial?.nivel ?? 2)
 
   useEffect(() => {
     // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
@@ -656,7 +667,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
     setError('')
     setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
-    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
+    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
@@ -756,7 +767,18 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El nivel')}</h2>
+        <div className="botones-fila" role="group" aria-label={t('El nivel')}>
+          {NIVELES.map((n, i) => (
+            <button key={i} type="button" onClick={() => setNivel(i)} disabled={!!ocupado} aria-pressed={nivel === i} aria-label={`${i} · ${t(n.nombre)}`}
+              className={`boton ${nivel === i ? 'boton-principal' : 'boton-secundario'}`} style={{ minWidth: 54, padding: 0 }}>{i}</button>
+          ))}
+        </div>
+        <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">6</span>{t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>
