@@ -329,6 +329,15 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     }
   }
 
+  const ocultarClase = async (c) => {
+    try {
+      await api(`/api/clases/${encodeURIComponent(c.codigo)}/oculta`, { method: 'PUT', body: { oculta: !c.oculta } })
+      setClases(todas => { const nuevas = todas.map(x => x.codigo === c.codigo ? { ...x, oculta: c.oculta ? 0 : 1 } : x); guardar('profe-clases', nuevas); return nuevas })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const borrarClase = async (c) => {
     if (!window.confirm(t('¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.', { nombre: c.nombre }))) return
     try {
@@ -363,13 +372,17 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
                 <span className="fila-titulo">{c.nombre}</span>
                 <span className="fila-detalle">
                   <span className="insignia" style={{ fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>{c.codigo}</span>
+                  {!!c.oculta && <span className="insignia">{t('Oculta')}</span>}
                   {plural(c.alumnos, '{n} alumno', '{n} alumnos')} · {plural(c.lecciones, '{n} lección', '{n} lecciones')}
                   {pendientes.some(p => p.codigo === c.codigo) && ` · ${t('{n} por preparar', { n: pendientes.filter(p => p.codigo === c.codigo).length })}`}
                 </span>
               </span>
               <Icono nombre="seguir" className="icono-final" />
             </button>
-            <Menu nombre={c.nombre} opciones={[[t('Eliminar la clase'), () => borrarClase(c), true]]} />
+            <Menu nombre={c.nombre} opciones={[
+              [c.oculta ? t('Mostrar a los alumnos') : t('Ocultar a los alumnos'), () => ocultarClase(c)],
+              [t('Eliminar la clase'), () => borrarClase(c), true],
+            ]} />
             </div>
           ))}
         </div>
@@ -479,7 +492,9 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     try {
       const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
       await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
-      if (borrar) guardarCambiosProfe(leerCambiosProfe().filter(x => x.id !== l.id)) // su cambio sin enviar ya no tiene adónde ir
+      guardarCambiosProfe(borrar
+        ? leerCambiosProfe().filter(x => x.id !== l.id) // su cambio sin enviar ya no tiene adónde ir
+        : leerCambiosProfe().map(x => x.id === l.id ? { ...x, publicar: !l.publicada } : x)) // que al enviarse no la vuelva a publicar
       cargar()
     } catch (e) {
       setError(e.message)
@@ -528,6 +543,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
         <span className="nota" style={{ margin: 0 }}>{t('Código para que entren tus alumnos')}</span>
         <span className="codigo-clase-texto">{clase.codigo}</span>
       </div>
+      {!!clase.oculta && <p className="aviso aviso-atencion">{t('Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».')}</p>}
 
       <Aviso texto={error} />
       <Aviso texto={aviso} color={COLOR.verde} />

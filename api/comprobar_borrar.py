@@ -12,7 +12,7 @@ main.DB_PATH = os.path.join(tempfile.mkdtemp(), "prueba.db")  # nunca la base de
 main.preparar_bd()
 with closing(main.db()) as c, c:
     for k in ("CLASEA", "CLASEB"):
-        c.execute("INSERT INTO clases VALUES (?, ?, ?)", (k, k, main.ahora()))
+        c.execute("INSERT INTO clases (codigo, nombre, creada) VALUES (?, ?, ?)", (k, k, main.ahora()))
         c.execute("INSERT OR IGNORE INTO alumnos VALUES ('a1', 'Ana')")
         c.execute("INSERT INTO matriculas VALUES (?, 'a1', ?)", (k, main.ahora()))
     for i, k in (("l1", "CLASEA"), ("l2", "CLASEA"), ("l3", "CLASEB")):
@@ -38,4 +38,20 @@ except main.HTTPException as e:
 main.borrar_clase("CLASEA")
 assert ve_ana() == ["l3"] and cuantas("SELECT COUNT(*) FROM clases") == 1 and not cuantas("SELECT COUNT(*) FROM pines_profe")
 assert cuantas("SELECT COUNT(*) FROM alumnos") == 1 and cuantas("SELECT COUNT(*) FROM respuestas") == 1  # Ana y su nota de la otra clase siguen
+
+# Clase oculta: Ana no la ve y su código no deja entrar, pero el profe la sigue viendo y las respuestas pendientes se guardan.
+main.ocultar_o_mostrar_clase("CLASEB", main.Oculta(oculta=True))
+assert ve_ana() == [] and main.ver_clase("CLASEB")["oculta"] == 1
+assert main.resumen_clases(main.db())[0]["oculta"] == 1
+assert main.leccion_del_alumno(main.db(), "a1", "l3")
+for entrar in (lambda: main.unirse("CLASEB", main.Unirse(alumno_id="a1")),
+               lambda: main.crear_alumno(main.NuevoAlumno(nombre="Bea", usuario="beaprueba", contrasena="clave1234", clase="CLASEB"))):
+    try:
+        entrar()
+        raise SystemExit("Se ha podido entrar en una clase oculta")
+    except main.HTTPException as e:
+        assert e.status_code == 404
+assert not cuantas("SELECT COUNT(*) FROM alumnos WHERE nombre = 'Bea'")  # el error no deja medio alumno creado
+main.ocultar_o_mostrar_clase("CLASEB", main.Oculta(oculta=False))
+assert ve_ana() == ["l3"]
 print("Ocultar, publicar y eliminar lecciones y clases: todo bien")
