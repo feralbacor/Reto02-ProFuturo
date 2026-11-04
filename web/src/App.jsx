@@ -5,6 +5,7 @@ import {
   COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
+import { buscar } from './tutorBuscar.js'
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
@@ -1157,7 +1158,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
           <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
             {paso === 0 ? 'Ya lo he leído' : 'Ir a las preguntas'}<Icono nombre="seguir" />
           </button>
-          <Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} />
+          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} />
         </>
       )}
 
@@ -1174,7 +1175,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">Volver a leer</button>
           </div>
           <p className="nota">Tus respuestas le llegan a tu profe cuando hay conexión.</p>
-          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
+          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
         </div>
       )}
 
@@ -1219,7 +1220,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
 
 // «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
 // de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
-function Dudas({ dudas, sinConexion, onPreguntar }) {
+function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
   const [abierta, setAbierta] = useState(false)
   const [texto, setTexto] = useState('')
 
@@ -1241,7 +1242,7 @@ function Dudas({ dudas, sinConexion, onPreguntar }) {
                 <p className="duda-pregunta">{d.pregunta}</p>
                 {d.respuesta
                   ? <p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p>
-                  : <p className="nota">{sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'}</p>}
+                  : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'} />}
               </div>
             ))}
           </div>
@@ -1264,6 +1265,18 @@ function Dudas({ dudas, sinConexion, onPreguntar }) {
         )
         : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />Tengo una duda</button>}
     </section>
+  )
+}
+
+// Mientras no llega la respuesta de la IA de la clase, el móvil busca en la lección, sin internet.
+function EnLaLeccion({ contenido, pregunta, nota }) {
+  const trozos = buscar(contenido, pregunta)
+  return (
+    <>
+      {trozos.length > 0 && <p className="nota" style={{ marginTop: 10 }}>Mientras tanto, esto dice la lección:</p>}
+      {trozos.map((t, i) => <p key={i} className="duda-respuesta">{t.texto} <span className="nota">(en «{t.parte}»)</span></p>)}
+      <p className="nota" style={{ marginTop: 10 }}>{nota}</p>
+    </>
   )
 }
 
