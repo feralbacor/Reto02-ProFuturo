@@ -87,6 +87,365 @@ function App() {
 }
 
 function VistaAlumno({ onVolver }) {
+  const [paso, setPaso] = useState('seleccion')
+  const [clases, setClases] = useState([])
+  const [claseSeleccionada, setClaseSeleccionada] = useState(null)
+  const [alumnos, setAlumnos] = useState([])
+  const [alumnoSeleccionado, setAlumnoSeleccionado] = useState('')
+  const [lecciones, setLecciones] = useState([])
+  const [leccionActual, setLeccionActual] = useState(null)
+  const [pestana, setPestana] = useState('leer')
+  const [preguntaActual, setPreguntaActual] = useState(0)
+  const [respuestaSeleccionada, setRespuestaSeleccionada] = useState(null)
+  const [respuestaEnviada, setRespuestaEnviada] = useState(false)
+
+  useEffect(() => {
+    const guardado = localStorage.getItem('alumno')
+    if (guardado) {
+      const datos = JSON.parse(guardado)
+      setAlumnoSeleccionado(datos.alumno)
+      setClaseSeleccionada(datos.clase)
+      setPaso('lecciones')
+      cargarLecciones(datos.clase)
+    }
+    
+    const clasesGuardadas = localStorage.getItem('clases')
+    if (clasesGuardadas) {
+      setClases(JSON.parse(clasesGuardadas))
+    }
+    
+    fetch('/api/clases')
+      .then(res => res.json())
+      .then(data => {
+        setClases(data)
+        localStorage.setItem('clases', JSON.stringify(data))
+      })
+      .catch(() => {
+        const cache = localStorage.getItem('clases')
+        if (cache) {
+          setClases(JSON.parse(cache))
+        }
+      })
+  }, [])
+
+  const cargarLecciones = (codigo) => {
+    const cacheKey = `lecciones-${codigo}`
+    const leccionesGuardadas = localStorage.getItem(cacheKey)
+    if (leccionesGuardadas) {
+      setLecciones(JSON.parse(leccionesGuardadas))
+    }
+
+    fetch(`/api/clases/${codigo}/lecciones`)
+      .then(res => res.json())
+      .then(data => {
+        setLecciones(data)
+        localStorage.setItem(cacheKey, JSON.stringify(data))
+      })
+      .catch(() => {
+        const cache = localStorage.getItem(cacheKey)
+        if (cache) {
+          setLecciones(JSON.parse(cache))
+        }
+      })
+  }
+
+  const handleSeleccionarClase = (codigo) => {
+    setClaseSeleccionada(codigo)
+    
+    const cacheKey = `clase-${codigo}`
+    const claseGuardada = localStorage.getItem(cacheKey)
+    if (claseGuardada) {
+      const datos = JSON.parse(claseGuardada)
+      setAlumnos(datos.alumnos)
+    }
+
+    fetch(`/api/clases/${codigo}`)
+      .then(res => res.json())
+      .then(data => {
+        setAlumnos(data.alumnos)
+        localStorage.setItem(cacheKey, JSON.stringify(data))
+      })
+      .catch(() => {
+        const cache = localStorage.getItem(cacheKey)
+        if (cache) {
+          setAlumnos(JSON.parse(cache).alumnos)
+        }
+      })
+  }
+
+  const handleSeleccionarAlumno = (nombre) => {
+    setAlumnoSeleccionado(nombre)
+    localStorage.setItem('alumno', JSON.stringify({ alumno: nombre, clase: claseSeleccionada }))
+    setPaso('lecciones')
+    cargarLecciones(claseSeleccionada)
+  }
+
+  const handleCerrarSesion = () => {
+    localStorage.removeItem('alumno')
+    setAlumnoSeleccionado('')
+    setClaseSeleccionada(null)
+    setPaso('seleccion')
+  }
+
+  const handleAbrirLeccion = async (leccion) => {
+    const cacheKey = `leccion-${leccion.id}`
+    const leccionGuardada = localStorage.getItem(cacheKey)
+    
+    if (leccionGuardada) {
+      setLeccionActual(JSON.parse(leccionGuardada))
+    }
+
+    try {
+      const res = await fetch(`/api/leccion/${leccion.id}`)
+      const data = await res.json()
+      setLeccionActual(data)
+      localStorage.setItem(cacheKey, JSON.stringify(data))
+    } catch {
+      if (leccionGuardada) {
+        setLeccionActual(JSON.parse(leccionGuardada))
+      }
+    }
+
+    setPestana('leer')
+    setPreguntaActual(0)
+    setRespuestaSeleccionada(null)
+    setRespuestaEnviada(false)
+    setPaso('leccion')
+  }
+
+  const handleResponder = () => {
+    setRespuestaEnviada(true)
+    
+    const respuesta = {
+      id: crypto.randomUUID(),
+      alumno: alumnoSeleccionado,
+      leccion_id: leccionActual.id,
+      pregunta: preguntaActual,
+      respuesta: respuestaSeleccionada,
+      fecha: new Date().toISOString()
+    }
+
+    const pendientes = JSON.parse(localStorage.getItem('pendientes') || '[]')
+    pendientes.push(respuesta)
+    localStorage.setItem('pendientes', JSON.stringify(pendientes))
+  }
+
+  const handleSiguientePregunta = () => {
+    if (preguntaActual < leccionActual.contenido.preguntas.length - 1) {
+      setPreguntaActual(preguntaActual + 1)
+      setRespuestaSeleccionada(null)
+      setRespuestaEnviada(false)
+    } else {
+      const pendientes = JSON.parse(localStorage.getItem('pendientes') || '[]')
+      alert(`¡Terminaste el test!\n${pendientes.length} respuestas por enviar.`)
+      setPaso('lecciones')
+    }
+  }
+
+  if (paso === 'leccion' && leccionActual) {
+    const pregunta = leccionActual.contenido.preguntas[preguntaActual]
+    
+    return (
+      <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto' }}>
+        <button
+          onClick={() => {
+            setPaso('lecciones')
+            setLeccionActual(null)
+          }}
+          style={{
+            padding: '10px 20px',
+            fontSize: '18px',
+            backgroundColor: '#999',
+            color: 'white',
+            border: 'none',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            marginBottom: '20px'
+          }}>
+          Volver
+        </button>
+
+        <h1 style={{ marginBottom: '20px' }}>{leccionActual.titulo}</h1>
+
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', flexWrap: 'wrap' }}>
+          {['leer', 'ejemplo', 'escuchar', 'test'].map(p => (
+            <button
+              key={p}
+              onClick={() => setPestana(p)}
+              style={{
+                flex: 1,
+                minWidth: '100px',
+                padding: '15px',
+                fontSize: '18px',
+                backgroundColor: pestana === p ? '#50c878' : '#ddd',
+                color: pestana === p ? 'white' : '#333',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: pestana === p ? 'bold' : 'normal'
+              }}>
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {pestana === 'leer' && (
+          <div style={{ fontSize: '20px', lineHeight: '1.8' }}>
+            {leccionActual.contenido.lectura_facil}
+          </div>
+        )}
+
+        {pestana === 'ejemplo' && (
+          <div style={{ fontSize: '20px', lineHeight: '1.8', backgroundColor: '#f0f8ff', padding: '20px', borderRadius: '10px' }}>
+            {leccionActual.contenido.explicacion_ejemplo}
+          </div>
+        )}
+
+        {pestana === 'escuchar' && <VistaEscuchar texto={leccionActual.contenido.lectura_facil} />}
+
+        {pestana === 'test' && (
+          <div>
+            <p style={{ fontSize: '18px', marginBottom: '20px', color: '#666' }}>
+              Pregunta {preguntaActual + 1} de {leccionActual.contenido.preguntas.length}
+            </p>
+            
+            <h2 style={{ fontSize: '22px', marginBottom: '25px' }}>{pregunta.pregunta}</h2>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {pregunta.opciones.map((opcion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => !respuestaEnviada && setRespuestaSeleccionada(idx)}
+                  disabled={respuestaEnviada}
+                  style={{
+                    padding: '20px',
+                    fontSize: '20px',
+                    backgroundColor: respuestaEnviada
+                      ? idx === pregunta.correcta
+                        ? '#50c878'
+                        : idx === respuestaSeleccionada
+                        ? '#e74c3c'
+                        : '#f5f5f5'
+                      : respuestaSeleccionada === idx
+                      ? '#4a90e2'
+                      : '#f5f5f5',
+                    color: respuestaEnviada && (idx === pregunta.correcta || idx === respuestaSeleccionada)
+                      ? 'white'
+                      : '#333',
+                    border: '2px solid #ddd',
+                    borderRadius: '10px',
+                    cursor: respuestaEnviada ? 'default' : 'pointer',
+                    textAlign: 'left'
+                  }}>
+                  {opcion}
+                </button>
+              ))}
+            </div>
+
+            {!respuestaEnviada && (
+              <button
+                onClick={handleResponder}
+                disabled={respuestaSeleccionada === null}
+                style={{
+                  width: '100%',
+                  marginTop: '25px',
+                  padding: '20px',
+                  fontSize: '22px',
+                  backgroundColor: respuestaSeleccionada !== null ? '#4a90e2' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: respuestaSeleccionada !== null ? 'pointer' : 'not-allowed'
+                }}>
+                Responder
+              </button>
+            )}
+
+            {respuestaEnviada && (
+              <div style={{ marginTop: '25px' }}>
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: '#fff3cd',
+                  borderRadius: '10px',
+                  fontSize: '18px',
+                  marginBottom: '15px'
+                }}>
+                  <strong>{respuestaSeleccionada === pregunta.correcta ? '¡Correcto!' : 'Incorrecto'}</strong>
+                  <p style={{ marginTop: '10px' }}>{pregunta.porque}</p>
+                </div>
+                <button
+                  onClick={handleSiguientePregunta}
+                  style={{
+                    width: '100%',
+                    padding: '20px',
+                    fontSize: '22px',
+                    backgroundColor: '#50c878',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer'
+                  }}>
+                  {preguntaActual < leccionActual.contenido.preguntas.length - 1 ? 'Siguiente' : 'Terminar'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (paso === 'lecciones') {
+    return (
+      <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Hola, {alumnoSeleccionado}</h2>
+            <button
+              onClick={handleCerrarSesion}
+              style={{
+                padding: '8px 15px',
+                fontSize: '16px',
+                backgroundColor: '#999',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                marginTop: '5px'
+              }}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+
+        <h1 style={{ marginBottom: '30px' }}>Mis lecciones</h1>
+
+        {lecciones.length === 0 ? (
+          <p style={{ fontSize: '20px', color: '#666' }}>No hay lecciones disponibles.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {lecciones.map(leccion => (
+              <button
+                key={leccion.id}
+                onClick={() => handleAbrirLeccion(leccion)}
+                style={{
+                  padding: '25px',
+                  fontSize: '22px',
+                  backgroundColor: '#fff',
+                  border: '3px solid #50c878',
+                  borderRadius: '15px',
+                  cursor: 'pointer',
+                  textAlign: 'left'
+                }}>
+                {leccion.titulo}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
       <button
@@ -103,7 +462,115 @@ function VistaAlumno({ onVolver }) {
         }}>
         Volver
       </button>
-      <h1>Soy alumno (en desarrollo)</h1>
+
+      <h1 style={{ marginBottom: '30px' }}>¿Quién eres?</h1>
+
+      {clases.length === 0 ? (
+        <p style={{ fontSize: '20px', color: '#666' }}>No hay clases disponibles.</p>
+      ) : (
+        <>
+          <label style={{ fontSize: '20px', fontWeight: 'bold', display: 'block', marginBottom: '15px' }}>
+            Elige tu clase:
+          </label>
+          <select
+            value={claseSeleccionada || ''}
+            onChange={(e) => handleSeleccionarClase(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '20px',
+              fontSize: '22px',
+              border: '2px solid #ddd',
+              borderRadius: '10px',
+              marginBottom: '30px'
+            }}>
+            <option value="">Selecciona...</option>
+            {clases.map(c => (
+              <option key={c.codigo} value={c.codigo}>{c.nombre}</option>
+            ))}
+          </select>
+
+          {claseSeleccionada && alumnos.length > 0 && (
+            <>
+              <label style={{ fontSize: '20px', fontWeight: 'bold', display: 'block', marginBottom: '15px' }}>
+                Tu nombre:
+              </label>
+              <select
+                value={alumnoSeleccionado}
+                onChange={(e) => handleSeleccionarAlumno(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '20px',
+                  fontSize: '22px',
+                  border: '2px solid #ddd',
+                  borderRadius: '10px'
+                }}>
+                <option value="">Selecciona...</option>
+                {alumnos.map(nombre => (
+                  <option key={nombre} value={nombre}>{nombre}</option>
+                ))}
+              </select>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function VistaEscuchar({ texto }) {
+  const [reproduciendo, setReproduendo] = useState(false)
+
+  const handleReproducir = () => {
+    const utterance = new SpeechSynthesisUtterance(texto)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.9
+    utterance.onend = () => setReproduendo(false)
+    
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+    setReproduendo(true)
+  }
+
+  const handleParar = () => {
+    window.speechSynthesis.cancel()
+    setReproduendo(false)
+  }
+
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
+        <button
+          onClick={handleReproducir}
+          disabled={reproduciendo}
+          style={{
+            padding: '25px 40px',
+            fontSize: '24px',
+            backgroundColor: reproduciendo ? '#ccc' : '#50c878',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            cursor: reproduciendo ? 'not-allowed' : 'pointer'
+          }}>
+          Reproducir
+        </button>
+        <button
+          onClick={handleParar}
+          disabled={!reproduciendo}
+          style={{
+            padding: '25px 40px',
+            fontSize: '24px',
+            backgroundColor: !reproduciendo ? '#ccc' : '#e74c3c',
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            cursor: !reproduciendo ? 'not-allowed' : 'pointer'
+          }}>
+          Parar
+        </button>
+      </div>
+      <p style={{ marginTop: '30px', fontSize: '18px', color: '#666' }}>
+        {reproduciendo ? 'Reproduciendo...' : 'Pulsa Reproducir para escuchar la lectura'}
+      </p>
     </div>
   )
 }

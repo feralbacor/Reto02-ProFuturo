@@ -53,6 +53,16 @@ def startup():
             fecha TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS clases (
+            codigo TEXT PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            alumnos TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        INSERT OR IGNORE INTO clases (codigo, nombre, alumnos) VALUES (?, ?, ?)
+    """, ('CLASE-5A', 'Quinto grado A', '["Ana", "Carlos", "María", "Juan", "Laura", "Pedro", "Sofia", "Miguel"]'))
     conn.commit()
     conn.close()
 
@@ -231,3 +241,55 @@ def publicar_leccion(leccion_id: str):
     conn.close()
     
     return {"mensaje": "Lección publicada"}
+
+
+@app.get("/api/clases")
+def listar_clases():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT codigo, nombre FROM clases")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [{"codigo": row["codigo"], "nombre": row["nombre"]} for row in rows]
+
+
+@app.get("/api/clases/{codigo}")
+def obtener_clase(codigo: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT codigo, nombre, alumnos FROM clases WHERE codigo = ?", (codigo,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Clase no encontrada")
+    
+    return {
+        "codigo": row["codigo"],
+        "nombre": row["nombre"],
+        "alumnos": json.loads(row["alumnos"])
+    }
+
+
+@app.get("/api/clases/{codigo}/lecciones")
+def lecciones_clase(codigo: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT codigo FROM clases WHERE codigo = ?", (codigo,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Clase no encontrada")
+    
+    cursor.execute("""
+        SELECT id, titulo, fecha FROM lecciones 
+        WHERE publicada = 1 
+        ORDER BY fecha DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {"id": row["id"], "titulo": row["titulo"], "fecha": row["fecha"]}
+        for row in rows
+    ]
