@@ -1,6 +1,6 @@
 # Mochila · Preguntas del jurado
 
-Respuestas para el flujo comunicado por el equipo. Las novedades están integradas desde main (6163d10); queda el ensayo completo en dispositivos antes de presentar. Las cifras son mediciones aportadas por el equipo, no resultados repetidos en este ordenador.
+Respuestas para el flujo comunicado por el equipo. Las novedades están integradas desde main con rediseño y dudas; queda el ensayo completo en dispositivos antes de presentar. Las cifras son mediciones aportadas por el equipo, no resultados repetidos en este ordenador.
 
 ## ¿Cómo puede funcionar si no hay Internet?
 
@@ -16,7 +16,7 @@ No: recibe el contenido educativo necesario para leer la página y preparar la l
 
 ## ¿Cómo protegéis el acceso del profesor?
 
-La clase tiene un PIN de 4 a 8 números. En otro aparato, el docente debe introducirlo para abrirla. Tras cinco intentos fallidos, el acceso se bloquea durante un minuto. El código de seis letras para el alumnado es distinto del PIN. Las clases antiguas sin PIN deben actualizarse antes del despliegue.
+La clase tiene un PIN de 4 a 8 números. En otro aparato, el docente debe introducirlo para abrirla. Tras cinco intentos fallidos, el acceso se bloquea durante un minuto. El código de seis letras y números para el alumnado es distinto del PIN. Las clases antiguas sin PIN deben actualizarse antes del despliegue.
 
 ## ¿Está protegido también el panel de notas?
 
@@ -52,7 +52,7 @@ Porque la creación de contenido debe poder continuar sin Internet y porque el m
 
 ## ¿La IA corre en cada móvil?
 
-No. El modelo qwen3-vl:4b, de unos 3,3 GB, se ejecuta en el ordenador del aula. Los móviles reciben el material preparado y realizan las actividades. La descarga inicial del modelo requiere preparación; su tamaño no demuestra por sí solo cuánta memoria necesita el ordenador.
+No. El modelo qwen3-vl:4b-instruct, de unos 3,3 GB, se ejecuta en el ordenador del aula. Los móviles reciben el material preparado y realizan las actividades. La descarga inicial del modelo requiere preparación; su tamaño no demuestra por sí solo cuánta memoria necesita el ordenador.
 
 ## ¿Qué precisión y velocidad habéis medido?
 
@@ -64,7 +64,7 @@ El docente revisa primero el texto leído y después la lectura, el ejemplo y la
 
 ## ¿Qué significa «Se está quedando atrás»?
 
-Es una señal de apoyo: un test completo tiene menos del 60 % de aciertos o han pasado más de tres días sin respuestas, tomando su fecha y, si no hay ninguna, la fecha de matrícula. Un test a medias se muestra como incompleto y no se marca todavía por nota baja. La falta de conexión también puede explicar la ausencia de datos; no es una evaluación automática de abandono.
+Es una señal de apoyo: un test completo tiene menos del 60 % de aciertos o han pasado más de tres días sin respuestas, tomando su fecha y, si no hay ninguna, la fecha de matrícula. Las fechas inválidas se descartan sin inventar actividad. Un test a medias se muestra como incompleto y no se marca todavía por nota baja. La falta de conexión también puede explicar la ausencia de datos; no es una evaluación automática de abandono.
 
 ## ¿Cómo lo escalaríais a una escuela?
 
@@ -93,3 +93,17 @@ El docente, dentro de su clase protegida por PIN, utiliza «Nueva contraseña».
 ## ¿Sincroniza con la aplicación cerrada?
 
 La nueva versión incluye un service worker con sincronización en segundo plano y periódica. Se aprovecha donde el navegador lo admite y concede tiempo de ejecución; no funciona igual en todos los dispositivos ni garantiza un intervalo exacto con la app cerrada. La sincronización con la página abierta sigue siendo la vía de respaldo.
+
+## ¿Puede la IA decirle algo inadecuado a un niño?
+
+Está instruida para contestar solo con la lección y responder «Eso no está en esta lección. Pregúntaselo a tu profe.» cuando no encuentre la respuesta. Es una limitación por instrucciones, no una garantía absoluta del modelo. El docente puede revisar y cambiar las respuestas; su pantalla muestra las 30 últimas dudas de estudiantes matriculados. El modelo recibe la lección y la pregunta sin añadir nombres ni notas. En la instalación enteramente local ese procesamiento no sale del ordenador del aula.
+
+## ¿Cuándo responde «Tengo una duda» si el móvil está offline?
+
+La duda se guarda y muestra «Se enviará cuando haya conexión». El ordenador la recibe al sincronizar y ejecuta la IA local. El equipo midió respuestas de unos 5–10 s; si está apagada o tarda, la duda continúa pendiente y el profe puede responder desde «Cambiar la respuesta». Mientras espera, el móvil busca fragmentos relacionados en la lectura y el ejemplo descargados y muestra su origen. Esta búsqueda funciona sin red ni IA; no genera una explicación nueva. Si no encuentra fragmentos, mantiene el aviso de espera. La respuesta generada por IA sigue necesitando acceso al ordenador del aula. Tras una corrección aparece «Te lo ha contestado tu profe.».
+
+## ¿En qué os diferenciáis de otros tutores sin conexión, como Juza AI (Kenia) o Nambi (Uganda)?
+
+Compartimos la búsqueda de aprendizaje sin Internet. Nuestra propuesta parte de la página del libro del docente: lectura, ejemplo y preguntas revisados antes de publicar, navegador en un móvil modesto, varios estudiantes por aparato con contraseña, notas y dudas que el profesor puede corregir. No afirmamos que ninguna de estas funciones sea exclusiva ni que esos productos sean solo un chat: Juza también describe contenido curricular revisado, y Nambi trabaja con currículo y dispositivos compartidos. No hemos hecho una comparación funcional completa ni una prueba comparativa de rendimiento.
+
+Referencias primarias para preparar esta respuesta: [Juza AI](https://www.juza.ai/) y [Nambi, de Akaalo](https://akaalo.com/nambi). No dar cifras de esos productos ni atribuirles funciones ausentes sin verificarlas.
