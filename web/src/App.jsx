@@ -6,7 +6,10 @@ import {
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
 import { t, plural, idioma, IDIOMAS, cambiarIdioma } from './idioma.js'
-import { useBuscar, useAyudante, descargar } from './tutorAyudante.js'
+import { buscar } from './tutorBuscar.js'
+
+// shortcut: libera los 150 MB del ayudante que se probó y se quitó (rama tutor-offline); se puede borrar cuando ningún móvil lo tenga.
+try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('ayudante') } catch { /* sin almacenamiento */ }
 
 // Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
 if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
@@ -880,6 +883,7 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [progreso, setProgreso] = useState(() => leer(clave('progreso'), {})) // { leccion_id: { empezada, hecha, aciertos, total } }
   const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
   const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
+  const [dudasQuitadas, setDudasQuitadas] = useState(() => leer(clave('dudas-quitadas'), [])) // las que el estudiante ya no quiere ver
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -992,10 +996,20 @@ function AlumnoCasa({ alumno, onSalir }) {
     setDudasCola(cola)
     sincronizar()
   }
+  // Si aún no se ha enviado, ya no se envía. Si ya se envió, deja de verse en este móvil (el profe la sigue viendo).
+  const quitarDuda = (id) => {
+    const cola = leer('dudas-pendientes', []).filter(d => d.id !== id)
+    guardar('dudas-pendientes', cola)
+    setDudasCola(cola)
+    const quitadas = [...dudasQuitadas, id]
+    guardar(clave('dudas-quitadas'), quitadas)
+    setDudasQuitadas(quitadas)
+  }
   const dudasDe = (leccionId) => {
     const delServidor = dudas.filter(d => d.leccion_id === leccionId)
     const ids = new Set(delServidor.map(d => d.id))
     return [...delServidor, ...dudasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id))]
+      .filter(d => !dudasQuitadas.includes(d.id))
   }
 
   if (otraClase) {
@@ -1010,7 +1024,7 @@ function AlumnoCasa({ alumno, onSalir }) {
         <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
           onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
           onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
-          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} />
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} onQuitar={quitarDuda} />
       </>
     )
   }
@@ -1118,7 +1132,7 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
 }
 
 // La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar }) {
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar, onQuitar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
   const [paso, setPaso] = useState(0)
   const [n, setN] = useState(0)
@@ -1130,7 +1144,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
   const pregunta = preguntas[n]
   const acierto = elegida === pregunta.correcta
   // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
-  const pista = useBuscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
+  const pista = buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
@@ -1181,7 +1195,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
           <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
             {paso === 0 ? t('Ya lo he leído') : t('Ir a las preguntas')}<Icono nombre="seguir" />
           </button>
-          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} />
+          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>
       )}
 
@@ -1198,7 +1212,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">{t('Volver a leer')}</button>
           </div>
           <p className="nota">{t('Tus respuestas le llegan a tu profe cuando hay conexión.')}</p>
-          <div style={{ textAlign: 'start' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
+          <div style={{ textAlign: 'start' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} /></div>
         </div>
       )}
 
@@ -1251,7 +1265,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
 
 // «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
 // de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
-function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
+function Dudas({ dudas, contenido, sinConexion, onPreguntar, onQuitar }) {
   const [abierta, setAbierta] = useState(false)
   const [texto, setTexto] = useState('')
   const campo = useRef(null)
@@ -1272,8 +1286,12 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
           <h2 className="seccion-titulo">{t('Mis dudas')}</h2>
           <div style={{ marginBottom: 16 }}>
             {dudas.map(d => (
-              <div key={d.id} className="tarjeta duda">
-                <p className="duda-pregunta">{d.pregunta}</p>
+              <div key={d.id} className="tarjeta duda" style={{ position: 'relative' }}>
+                <button onClick={() => window.confirm(t('¿Borrar esta duda?')) && onQuitar(d.id)} aria-label={t('Borrar esta duda')}
+                  style={{ position: 'absolute', top: 6, insetInlineEnd: 6, width: 40, height: 40, display: 'grid', placeItems: 'center', background: 'none', border: 0, color: 'var(--tinta-suave)', cursor: 'pointer' }}>
+                  <Icono nombre="mal" tam={18} />
+                </button>
+                <p className="duda-pregunta" style={{ paddingInlineEnd: 30 }}>{d.pregunta}</p>
                 {d.respuesta
                   ? <><p className="duda-respuesta">{t(d.respuesta)}{d.corregida ? <span className="nota" style={{ display: 'block' }}>{t('Te lo ha contestado tu profe.')}</span> : null}</p><div style={{ marginTop: 10 }}><Escuchar texto={t(d.respuesta)} lengua={contenido?.idioma} /></div></>
                   : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? t('Se enviará cuando haya conexión.') : t('Esperando la respuesta…')} />}
@@ -1303,28 +1321,13 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
           </form>
         )
         : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />{t('Tengo una duda')}</button>}
-      <Ayudante sinConexion={sinConexion} />
     </section>
-  )
-}
-
-// Opcional: el ayudante entiende la duda aunque no use las palabras de la lección. Se descarga una vez y va sin red.
-function Ayudante({ sinConexion }) {
-  const { estado, progreso } = useAyudante()
-  if (estado === 'listo') return <p className="nota" style={{ marginTop: 14 }}>{t('Ayudante descargado: entiende tus dudas aunque uses otras palabras.')}</p>
-  if (estado === 'descargando') return <p className="nota" style={{ marginTop: 14 }} role="status">{t('Descargando el ayudante… {n} %', { n: progreso })}</p>
-  return (
-    <div style={{ marginTop: 18 }}>
-      <p className="nota">{estado === 'error' ? t('No se ha podido descargar el ayudante. Prueba otra vez con conexión.')
-        : t('¿Quieres que Mochila entienda mejor tus dudas? Descarga el ayudante una vez y funcionará sin conexión. Mejor con wifi.')}</p>
-      <button onClick={descargar} disabled={sinConexion} className="boton boton-fantasma boton-ancho">{t('Descargar ayudante (150 MB)')}</button>
-    </div>
   )
 }
 
 // Mientras no llega la respuesta de la IA de la clase, el móvil busca en la lección, sin internet.
 function EnLaLeccion({ contenido, pregunta, nota }) {
-  const trozos = useBuscar(contenido, pregunta)
+  const trozos = buscar(contenido, pregunta)
   return (
     <>
       {trozos.length > 0 && <p className="nota" style={{ marginTop: 10 }}>{t('Mientras tanto, esto dice la lección:')}</p>}

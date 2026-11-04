@@ -26,10 +26,7 @@ export function frasesDe(contenido) {
     .map(f => f.trim())
     .filter(f => f.length > 3)
     // «También absorben agua» habla de lo de la frase anterior (las raíces): cuenta también sus palabras.
-    .map((texto, i, todas) => {
-      const conAntes = REMITE.test(sinTildes(texto)) && i > 0 ? `${todas[i - 1]} ${texto}` : texto
-      return { texto, parte, conAntes, raices: raices(conAntes) }
-    }))
+    .map((texto, i, todas) => ({ texto, parte, raices: raices(REMITE.test(sinTildes(texto)) && i > 0 ? `${todas[i - 1]} ${texto}` : texto) })))
 }
 
 // Devuelve las frases que mejor responden (como mucho 2, en el orden de la lección), o [] si la lección no lo explica.
@@ -40,16 +37,10 @@ export function buscar(contenido, duda) {
   // Una palabra que sale en pocas frases dice más que una que sale en todas.
   const peso = r => Math.log(1 + frases.length / (1 + frases.filter(f => f.raices.includes(r)).length))
   const total = pedidas.reduce((s, r) => s + peso(r), 0)
-  const notas = frases.map(f => f.raices.filter(r => pedidas.includes(r)).reduce((s, r) => s + peso(r), 0) / total)
-  return elegir(frases, notas, 0.34, 0.75) // por debajo de 0.34, casi nada en común: mejor decir que no lo sabe que inventar
-}
-
-// Con la nota de cada frase, se queda con las mejores (como mucho 2) si pasan del mínimo. También la usa el ayudante.
-export function elegir(frases, notas, minimo, cerca) {
-  const puntuadas = frases.map((f, i) => ({ ...f, i, nota: notas[i] }))
-  const mejor = Math.max(...notas)
-  if (!(mejor >= minimo)) return []
-  const elegidas = new Set(puntuadas.filter(f => f.nota >= mejor * cerca).sort((a, b) => b.nota - a.nota).slice(0, 2).map(f => f.i))
+  const puntuadas = frases.map((f, i) => ({ ...f, i, nota: f.raices.filter(r => pedidas.includes(r)).reduce((s, r) => s + peso(r), 0) / total }))
+  const mejor = Math.max(...puntuadas.map(f => f.nota))
+  if (mejor < 0.34) return [] // casi nada en común: mejor decir que no lo sabe que inventar
+  const elegidas = new Set(puntuadas.filter(f => f.nota >= mejor * 0.75).sort((a, b) => b.nota - a.nota).slice(0, 2).map(f => f.i))
   // «Este proceso se llama fotosíntesis» no se entiende solo: añadimos la frase de antes.
   for (const i of [...elegidas]) if (i > 0 && frases[i - 1].parte === frases[i].parte && REMITE.test(sinTildes(frases[i].texto))) elegidas.add(i - 1)
   // Frases seguidas de la misma pestaña van juntas, en el orden de la lección.
