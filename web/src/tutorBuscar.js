@@ -31,11 +31,16 @@ export function frasesDe(contenido) {
 
 // Devuelve las frases que mejor responden (como mucho 2, en el orden de la lección), o [] si la lección no lo explica.
 export function buscar(contenido, duda) {
-  const pedidas = raices(duda)
-  if (!pedidas.length) return []
   const frases = frasesDe(contenido)
+  const cuantas = r => frases.filter(f => f.raices.includes(r)).length
+  // «¿Qué papel toma el sol?»: «papel» y «toma» no salen en la lección y no deben tapar a «sol».
+  const escritas = raices(duda)
+  const pedidas = escritas.filter(r => cuantas(r) > 0)
+  if (!pedidas.length) return []
+  // «¿Qué son los volcanes del agua?»: si al quitar las que no están solo queda una muy repetida, la lección no lo explica.
+  if (pedidas.length < escritas.length && !pedidas.some(r => cuantas(r) <= frases.length / 2)) return []
   // Una palabra que sale en pocas frases dice más que una que sale en todas.
-  const peso = r => Math.log(1 + frases.length / (1 + frases.filter(f => f.raices.includes(r)).length))
+  const peso = r => Math.log(1 + frases.length / (1 + cuantas(r)))
   const total = pedidas.reduce((s, r) => s + peso(r), 0)
   const puntuadas = frases.map((f, i) => ({ ...f, i, nota: f.raices.filter(r => pedidas.includes(r)).reduce((s, r) => s + peso(r), 0) / total }))
   const mejor = Math.max(...puntuadas.map(f => f.nota))
