@@ -1,0 +1,73 @@
+PROMPTS PARA GLM-5 — RETO 02 PROFUTURO
+=====================================
+
+Cómo empezar (en la Terminal):
+
+    cd ~/Desktop/Reto02-ProFuturo
+    opencode
+
+GLM-5 lee AGENTS.md solo (ahí está todo el proyecto explicado).
+Pega UN prompt cada vez. No pases al siguiente hasta que hayas
+comprobado que el anterior funciona y hayas hecho el commit.
+
+
+══════════ DÍA 1 ══════════
+
+── PROMPT 1 · Esqueleto ──────────────────────────────
+
+Lee AGENTS.md entero. Haz el paso 1: crea la estructura web/ (Vite + React, JavaScript) y api/ (FastAPI + SQLite en un .venv), con el proxy de /api ya configurado. La API tiene que responder en GET /api/salud y la web tiene que mostrar dos botones grandes, «Soy profe» y «Soy alumno», y debajo el estado de la API. Haz también git init con un .gitignore (node_modules, .venv, *.db). Al acabar, dime los comandos exactos para arrancarlo y qué debería ver.
+
+
+── PROMPT 2 · El profe crea una lección ──────────────
+
+Paso 2: en «Soy profe», un formulario para crear una lección pegando texto o subiendo una foto de la página del libro (redúcela en el navegador a 1600 px en JPEG antes de enviarla). En la API: si llega una foto, Kimi K3 la transcribe; luego GLM-5 genera este JSON: {titulo, lectura_facil, explicacion_ejemplo, preguntas: [{pregunta, opciones: [4 textos], correcta: índice 0-3, porque}]}, con 5 preguntas. Guarda la lección en SQLite como borrador. El profe la ve, puede corregir cualquier texto y pulsa «Publicar». Mientras la IA trabaja, se ve «Leyendo la página…» o «Preparando la lección…». Si la IA falla, un mensaje claro y la opción de reintentar.
+
+
+── PROMPT 3 · El alumno, sin conexión ────────────────
+
+Paso 3: en «Soy alumno», se escribe el código de clase y se elige el nombre en una lista. Ve sus lecciones publicadas en tarjetas grandes. Dentro de cada lección hay 4 pestañas: Leer (lectura fácil), Ejemplo, Escuchar (speechSynthesis en es-ES, con los botones Reproducir y Parar) y Test (una pregunta cada vez; al responder, dice si está bien y el porqué). Convierte la web en PWA con vite-plugin-pwa para que, después de la primera visita, TODO funcione con DevTools → Network → Offline, incluidas las lecciones ya descargadas (guárdalas en localStorage). Dime cómo comprobarlo paso a paso.
+
+
+══════════ DÍA 2 ══════════
+
+── PROMPT 4 · Sincronización ─────────────────────────
+
+Paso 4: cada respuesta del test se guarda con un id (crypto.randomUUID()) en una cola «pendientes» en localStorage. Haz POST /api/sync tal como dice AGENTS.md (INSERT OR IGNORE por id, devuelve lecciones y avisos nuevos). Sincroniza al abrir la app, con el evento online y cada 30 s. Arriba de todo, siempre visible, una barra: rojo «Sin conexión · N respuestas por enviar», amarillo «Enviando…», verde «Todo enviado». Prueba que si envío lo mismo dos veces no se duplica y que, si cierro la pestaña sin conexión, los pendientes siguen ahí al volver.
+
+
+── PROMPT 5 · Panel del profe ────────────────────────
+
+Paso 5: en «Soy profe», una pestaña «Mi clase» con una tabla: una fila por alumno, una columna por lección, la nota (por ejemplo 4/5) y la hora del último envío. Los alumnos que llevan más de 3 días sin enviar nada o que suspenden van arriba y marcados en naranja: «Se está quedando atrás». Añade también «Enviar aviso»: un texto corto que les llega a los alumnos en el próximo sync y se ve como una tarjeta al entrar.
+
+
+── PROMPT 6 · Datos para la demo y pulido ────────────
+
+Paso 6: crea un script api/demo.py que deje la base de datos lista para la demo: clase CLASE-5A, 6 alumnos con nombres variados, 2 lecciones ya publicadas y respuestas de varios días (dos alumnos «quedándose atrás»). Revisa toda la web en un móvil de 360 px de ancho: letra de 18 px como mínimo, botones de al menos 48 px y nada que se salga de la pantalla. Quita todo lo que no se use.
+
+
+══════════ SI ALGO VA MAL ══════════
+
+── Se ha atascado o rompe cosas ──
+
+Para. No cambies nada más. Explícame en 5 líneas qué falla y por qué, y dame 2 soluciones posibles. Yo elijo.
+
+── Error que no consigue arreglar ──
+Sal (Ctrl + C) y entra con Kimi K3, que es más lista pero más lenta:
+
+    opencode -m amazon-bedrock/global.moonshotai.kimi-k3 -c
+
+y pega el error tal cual.
+
+── Volver a cuando funcionaba ──
+
+    git log --oneline
+    git checkout -- .        (borra los cambios sin commit: ¡cuidado!)
+
+
+══════════ RECUERDA ══════════
+
+- Commit cada vez que algo funcione:
+      git add -A && git commit -m "paso N funciona"
+- Lee la rúbrica de ProFuturo y las normas del hackathon sobre el uso de IA.
+- Para la demo: primero con conexión, luego modo avión, luego vuelve la
+  red y se ve la nota en el panel. Ensáyala 3 veces.
