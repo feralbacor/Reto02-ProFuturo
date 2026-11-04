@@ -8,6 +8,14 @@ La aplicación y las lecciones se guardan en el móvil. Las respuestas y las dud
 
 La IA corre en el ordenador de la clase con **Ollama y qwen3-vl:4b-instruct**, sin necesitar Internet después de descargar el modelo. El móvil desconectado busca al momento fragmentos de Leer y Ejemplo relacionados con la duda y muestra su origen. Es búsqueda de texto, sin ejecutar IA en el móvil. La duda queda pendiente de envío para recibir después la respuesta de la IA del ordenador; si no encuentra fragmentos, conserva el aviso de espera. Una wifi local puede conectar los dispositivos sin ofrecer Internet.
 
+## Idiomas
+
+La portada permite elegir entre 23 idiomas, con francés e inglés primero; el árabe utiliza escritura de derecha a izquierda. Cambiar el idioma de la interfaz no traduce automáticamente una lección que ya existe.
+
+El profe elige «El idioma de la lección» en el paso 4 de «Nueva lección». La voz de «Escuchar» utiliza el idioma guardado dentro de esa lección; para escuchar sin red debe haber una voz local compatible instalada. La generación desde la API en el idioma solicitado sigue pendiente del cambio de Claude; comprobar ese recorrido antes de prometerlo. Las dos lecciones fr/en de AULA23 ya están escritas manualmente.
+
+Francés e inglés están revisados por el equipo. Las otras traducciones son borradores automáticos y requieren revisión con hablantes nativos antes de usarlas en una escuela. Si falta un texto, se intenta mostrar en inglés y, si tampoco está, se conserva el español.
+
 ## Arranque
 
 Requisitos: Python 3.11 o posterior, Node compatible con el proyecto y Ollama. La primera instalación y la descarga del modelo requieren conexión o paquetes trasladados previamente. Los servidores se arrancan manualmente.
@@ -55,7 +63,7 @@ El script compila, arranca preview y muestra un enlace HTTPS para el móvil. Abr
 
 Datos ficticios del hackatón: clase **AULA23**, PIN inicial del profe **1234**, estudiante **aula23ana**, contraseña inicial **1234**. La carga conserva credenciales ya cambiadas; si un usuario estaba ocupado, añade un sufijo y se puede consultar desde la clase del profe.
 
-Hay seis estudiantes, dos lecciones y tres dudas de ejemplo: respuesta de IA preparada, respuesta corregida por el profe y una pendiente. El hilo de IA puede responder después a la pendiente. El profe entra por «Soy profe»; el estudiante por «Soy estudiante» → «Ya tengo usuario». En «Ver notas» están los resultados y, en la clase, «Dudas de tus alumnos».
+Hay seis estudiantes, cuatro lecciones (dos en español, una en francés y otra en inglés) y tres dudas de ejemplo: respuesta de IA preparada, respuesta corregida por el profe y una pendiente. El hilo de IA puede responder después a la pendiente. El profe entra por «Soy profe»; el estudiante por «Soy estudiante» → «Ya tengo usuario». En «Ver notas» están los resultados y, en la clase, «Dudas de tus alumnos».
 
 ## Privacidad y revisión docente
 

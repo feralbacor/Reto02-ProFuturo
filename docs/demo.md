@@ -23,7 +23,7 @@ La clase AULA23 tiene PIN inicial **1234**. Las seis cuentas de ejemplo tienen c
 | Elena | aula23elena |
 | Farid | aula23farid |
 
-Son credenciales de datos ficticios para el hackatón. El script solo crea las que faltan: si el profe ya cambió un PIN o una contraseña, conserva ese cambio. Si un usuario base está ocupado por otra cuenta, asigna un sufijo numérico; consulta el usuario definitivo en la clase del profe. Las lecciones antiguas sin materia aparecen en «General».
+Son credenciales de datos ficticios para el hackatón. El script solo crea las que faltan: si el profe ya cambió un PIN o una contraseña, conserva ese cambio. Si un usuario base está ocupado por otra cuenta, asigna un sufijo numérico; consulta el usuario definitivo en la clase del profe. Las dos lecciones españolas originales sin materia aparecen en «General». Las nuevas «L'eau et ses états» (Sciences, fr) y «The parts of a plant» (Science, en) están publicadas sin respuestas de ejemplo, para que su primera nota proceda de la práctica real.
 
 ## Pasos
 
@@ -42,3 +42,7 @@ La sincronización en segundo plano depende del soporte y la planificación del 
 La carga añade tres dudas con identificadores fijos: Ana tiene una respuesta de ejemplo de IA sobre evaporación, Bruno una corregida por el profe sobre las nubes y Carla una pendiente sobre raíces. Son datos ficticios preparados, no tres consultas ejecutadas en directo. Repetir el script no cambia sus respuestas. El hilo de IA puede contestar después la pendiente si Ollama está disponible.
 
 Para demostrar una pregunta nueva: abrir «1. Leer» → «Tengo una duda» → «Enviar mi duda» sin red. Ver los fragmentos de la lección con «Mientras tanto, esto dice la lección:» y su origen, junto a «Se enviará cuando haya conexión.». Es búsqueda local, no generación con IA. Si no encuentra fragmentos, queda la espera. Reconectar, esperar la respuesta de IA y revisar «Dudas de tus alumnos» en el portátil. El docente puede «Cambiar la respuesta»; la siguiente sincronización muestra «Te lo ha contestado tu profe.».
+
+## Acceso en francés
+
+Después de cargar de nuevo demo.py, seleccionar Français en la portada → «Je suis élève» → «J'ai déjà un identifiant» → aula23ana / contraseña inicial 1234 → «Entrer». Abrir «L'eau et ses états» y pulsar «Écouter». Para el modo avión, descargar antes esa lección y comprobar la voz francesa local. Hay cuatro lecciones en total; repetir el script conserva las notas y el contenido existente.
