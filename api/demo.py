@@ -44,6 +44,28 @@ LECCIONES = [
 ]
 
 
+LECCIONES += [
+    dict(leccion("L'eau et ses états",
+        "L'eau peut être liquide, solide ou sous forme de vapeur. Dans un verre, elle est liquide. Dans un glaçon, elle est solide. Quand l'eau liquide devient solide, elle gèle. Quand un glaçon devient liquide, il fond. Le soleil chauffe l'eau des flaques. Une partie de cette eau s'évapore. Elle devient de la vapeur d'eau, un gaz invisible présent dans l'air. Quand la vapeur refroidit, elle peut former de petites gouttes. On appelle cela la condensation. L'eau change d'état, mais elle reste de l'eau.",
+        "Après la pluie, une flaque reste dans la cour. Le soleil la chauffe et une partie de son eau s'évapore. Un glaçon laissé dans un verre peut fondre et devenir de l'eau liquide.", [
+            ("Dans quel état est l'eau d'un glaçon ?", ['Liquide', 'Solide', 'Gazeux', 'Elle disparaît'], 1, "Un glaçon est de l'eau solide."),
+            ("Que fait un glaçon quand il devient liquide ?", ['Il gèle', "Il s'évapore", 'Il fond', 'Il devient du sable'], 2, 'Il fond : il passe de solide à liquide.'),
+            ("Qu'est-ce qui chauffe l'eau de la flaque ?", ['Le soleil', 'La lune', 'Le sable froid', 'Le glaçon'], 0, "Le soleil chauffe l'eau de la flaque."),
+            ("Comment s'appelle le passage de l'eau liquide à la vapeur ?", ['La fusion', 'Le gel', 'La condensation', "L'évaporation"], 3, "L'évaporation transforme l'eau liquide en vapeur."),
+            ("Que peut former la vapeur quand elle refroidit ?", ['Du sable', 'De petites gouttes', 'Des cailloux', 'Du bois'], 1, 'La vapeur peut former des gouttes par condensation.'),
+        ]), materia='Sciences', idioma='fr'),
+    dict(leccion('The parts of a plant',
+        'Plants are living things. They need water, light and air to grow. Roots hold a plant in the soil. They also take in water and minerals. The stem supports the leaves and carries substances through the plant. Leaves use light to make food. This process is called photosynthesis. Many plants have flowers. Flowers help these plants reproduce. Some flowers develop into fruits. Many fruits contain seeds. A seed can grow into a new plant when conditions are right. Not all plants have flowers. Looking after a plant means understanding what it needs.',
+        'Grow a bean plant in a pot. You can watch its stem and leaves grow. Water the soil so that the roots can take in water.', [
+            ('Which part takes in water from the soil?', ['The flower', 'The fruit', 'The roots', 'The dry seed'], 2, 'Roots take in water and minerals from the soil.'),
+            ('Which part supports the leaves?', ['The stem', 'The cloud', 'The fruit', 'The pot'], 0, 'The stem supports the leaves.'),
+            ('What do leaves use to make food?', ['Stones', 'Plastic', 'Darkness', 'Light'], 3, 'Leaves use light during photosynthesis.'),
+            ('What do many fruits contain?', ['Roots', 'Seeds', 'Stems', 'Soil'], 1, 'Many fruits contain seeds.'),
+            ('Do all plants have flowers?', ['Yes, always', 'Only in winter', 'No', 'Only at night'], 2, 'Not all plants have flowers.'),
+        ]), materia='Science', idioma='en'),
+]
+
+
 def crear_demo(c, fecha=None):
     fecha = fecha or datetime.now()
     antigua = (fecha - timedelta(days=7)).isoformat(timespec='seconds')
@@ -63,7 +85,7 @@ def crear_demo(c, fecha=None):
             if c.execute('SELECT 1 FROM cuentas_alumno WHERE usuario = ?', (usuario,)).fetchone():
                 usuario = main.usuario_libre(c, usuario)
             main.guardar_contrasena(c, alumno, '1234', usuario)
-        for j, contenido in enumerate(LECCIONES):
+        for j, contenido in enumerate(LECCIONES[:2]):
             aciertos = [5, 4, 3, 2, 4, 5][i]
             momento = (fecha - timedelta(days=5 if i == 4 else j, hours=i)).isoformat(timespec='seconds')
             for k, pregunta in enumerate(contenido['preguntas']):
@@ -97,13 +119,19 @@ def comprobar():
                 crear_demo(c, datetime.now() + timedelta(days=1))
                 assert '\n'.join(c.iterdump()) == antes, 'La segunda ejecución cambia datos'
                 assert c.execute('SELECT COUNT(*) FROM matriculas WHERE clase = ?', (CODIGO,)).fetchone()[0] == 6
-                assert c.execute('SELECT COUNT(*) FROM lecciones').fetchone()[0] == 2
+                assert c.execute('SELECT COUNT(*) FROM lecciones').fetchone()[0] == 4
                 assert c.execute('SELECT COUNT(*) FROM respuestas').fetchone()[0] == 60
                 assert c.execute('SELECT COUNT(*) FROM dudas').fetchone()[0] == 3
                 assert c.execute('SELECT respuesta IS NOT NULL AND corregida = 0 FROM dudas WHERE id = ?', (identificador('duda-0'),)).fetchone()[0]
                 assert c.execute('SELECT respuesta IS NOT NULL AND corregida = 1 FROM dudas WHERE id = ?', (identificador('duda-1'),)).fetchone()[0]
                 assert c.execute('SELECT respuesta IS NULL FROM dudas WHERE id = ?', (identificador('duda-2'),)).fetchone()[0]
                 assert all(main.leccion_valida(l) for l in LECCIONES)
+                for i, lengua in [(2, 'fr'), (3, 'en')]:
+                    fila = c.execute('SELECT contenido, publicada FROM lecciones WHERE id = ? AND clase = ?', (identificador(f'leccion-{i}'), CODIGO)).fetchone()
+                    contenido = json.loads(fila['contenido'])
+                    assert fila['publicada'] == 1 and contenido['idioma'] == lengua
+                    assert contenido['materia'] and len(contenido['preguntas']) == 5
+                    assert all(len(p['opciones']) == 4 for p in contenido['preguntas'])
             main.comprobar_pin(CODIGO, '1234')
             for i, nombre in enumerate(['Ana', 'Bruno', 'Carla', 'Diego', 'Elena', 'Farid']):
                 usuario = 'aula23ana2' if i == 0 else f'aula23{nombre.lower()}'
@@ -121,7 +149,7 @@ def comprobar():
             assert main.entrar_alumno(main.Entrar(usuario='aula23diego', contrasena='nueva1234'))['id'] == identificador('alumno-3')
     finally:
         main.DB_PATH = original
-    print('Correcto: demo repetible, tres dudas, PIN, seis accesos, colisiones y correcciones existentes conservadas.')
+    print('Correcto: demo repetible, cuatro lecciones (es/fr/en), tres dudas, PIN, seis accesos, colisiones y correcciones existentes conservadas.')
 
 
 if __name__ == '__main__':

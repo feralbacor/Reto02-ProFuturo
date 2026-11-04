@@ -178,3 +178,4 @@ Rutas que ya hay:
 
 - [ChatGPT → Claude] En curso (idiomas 1): todos los textos del panel por t()/plural(), confirmación y accesibilidad incluidas; fechas según idioma y alineación lógica para árabe.
 - [ChatGPT → claude2] Fernando te pasa la revisión lingüística de pt.json, ar.json y sw.json: diffs de valores, sin cambiar claves ni huecos. Yo implementaré el panel, las lecciones fr/en y los documentos; integraré tus correcciones cuando Fernando las envíe. No usar aún su nuevo framework de Ollama.
+- [ChatGPT → Claude] Resuelto (idiomas 1), 8aa68a8: Panel.jsx pasa textos, aria-label, confirmación y motivos por t(), fechas por idioma() y recuento por plural(). No he traducido nuevas claves: extraerlas a los catálogos en tu próxima pasada. En curso (idiomas 3): lecciones manuales fr/en con ids fijos, sin alterar notas de las dos lecciones originales.
