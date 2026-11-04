@@ -1209,6 +1209,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
               <strong>No es esa. Te doy una pista.</strong>
               <span style={{ display: 'block', marginTop: 4 }}>Mira lo que dice la lección:</span>
               {pista.map((t, i) => <span key={i} style={{ display: 'block', marginTop: 6 }}>«{t.texto}» <span className="nota">(en «{t.parte}»)</span></span>)}
+              <div style={{ marginTop: 10 }}><Escuchar key={n} texto={pista.map(t => t.texto).join(' ')} /></div>
             </div>
           )}
           {!respondida
@@ -1236,6 +1237,9 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
 function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
   const [abierta, setAbierta] = useState(false)
   const [texto, setTexto] = useState('')
+  const campo = useRef(null)
+  // Para quien escribe con dificultad: la duda ya empieza escrita y solo falta la palabra.
+  const empezar = (inicio) => { setTexto(inicio); campo.current?.focus() }
 
   const enviar = (ev) => {
     ev.preventDefault()
@@ -1254,7 +1258,7 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
               <div key={d.id} className="tarjeta duda">
                 <p className="duda-pregunta">{d.pregunta}</p>
                 {d.respuesta
-                  ? <p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p>
+                  ? <><p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p><div style={{ marginTop: 10 }}><Escuchar texto={d.respuesta} /></div></>
                   : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'} />}
               </div>
             ))}
@@ -1266,7 +1270,12 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
           <form onSubmit={enviar} className="formulario">
             <div className="campo-grupo">
               <label htmlFor="duda-texto" className="etiqueta">¿Qué no has entendido?</label>
-              <textarea id="duda-texto" className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                {['¿Qué es ', 'No entiendo ', '¿Por qué '].map(inicio => (
+                  <button key={inicio} type="button" onClick={() => empezar(inicio)} className="boton boton-secundario boton-pequeno">{inicio.trim()}…</button>
+                ))}
+              </div>
+              <textarea id="duda-texto" ref={campo} className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
                 style={{ minHeight: 110 }} />
               <p className="pista">Pregunta sobre esta lección. Te contesta Mochila con lo que dice la lección, y tu profe también lo verá.</p>
             </div>
@@ -1288,6 +1297,7 @@ function EnLaLeccion({ contenido, pregunta, nota }) {
     <>
       {trozos.length > 0 && <p className="nota" style={{ marginTop: 10 }}>Mientras tanto, esto dice la lección:</p>}
       {trozos.map((t, i) => <p key={i} className="duda-respuesta">{t.texto} <span className="nota">(en «{t.parte}»)</span></p>)}
+      {trozos.length > 0 && <div style={{ marginTop: 10 }}><Escuchar texto={trozos.map(t => t.texto).join(' ')} /></div>}
       <p className="nota" style={{ marginTop: 10 }}>{nota}</p>
     </>
   )
