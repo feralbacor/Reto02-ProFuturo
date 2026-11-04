@@ -1,35 +1,52 @@
 # Mochila · Pitch de 3 minutos
 
-Texto para ensayar. Las funciones de sincronización y avisos deben estar integradas y comprobadas antes de presentarlas como disponibles. Las marcas de tiempo son orientativas: medir en el ensayo.
+Guion oral para dos personas: una presenta y maneja el portátil del docente; otra maneja el móvil del alumno. Ensayar con cronómetro. La demo completa está en [guion-demo.md](guion-demo.md).
 
-## 0:00–0:35 · El problema
+## 0:00–0:25 · Problema
 
-Imaginad que una alumna abre su lección y la conexión se corta. No puede avanzar, pierde el ritmo y su docente tampoco sabe si necesita ayuda. Cuando Internet es lento, caro o no existe, una herramienta educativa debe permitir que la clase continúe.
+Imaginad que una alumna tiene un móvil, ganas de aprender y una conexión que desaparece. Una lección que depende de Internet deja de servir justo cuando más la necesita.
 
-Hemos creado Mochila: una clase digital que el alumnado se lleva en su dispositivo, preparada para aprender sin conexión.
+Mochila responde a ese problema: permite preparar una clase, llevarla en el dispositivo y seguir aprendiendo aunque no haya red.
 
-## 0:35–1:15 · La solución
+## 0:25–0:55 · Solución
 
-El docente parte de algo que ya tiene: una página de su libro. Puede fotografiarla o pegar su texto. Una IA ejecutada en el ordenador del aula prepara una lectura sencilla, un ejemplo cotidiano y cinco preguntas con explicaciones. El docente revisa y publica el material antes de compartirlo.
+El docente crea una clase con nombre y PIN. El alumnado entra con su nombre y un código, sin email ni apellidos.
 
-La IA necesita estar descargada y el ordenador debe tener capacidad para ejecutarla. Después puede trabajar sin Internet. No enviamos nombres ni respuestas del alumnado al modelo: solo recibe el contenido educativo.
+Para preparar una lección, el profesor elige la materia y fotografía una página de su libro. Mochila lee la foto; el docente revisa el texto y genera una lectura sencilla, un ejemplo y un test. Revisa el resultado y lo publica. La IA ayuda a preparar material; el profesor conserva la decisión educativa.
 
-## 1:15–2:05 · La demostración
+## 0:55–1:45 · Demo
 
-Esta es nuestra clase de Ciencias. El alumno entra con su nombre y el código del aula. Mientras tiene conexión con el ordenador, descarga las lecciones completas.
+Mirad el móvil: las lecciones aparecen por materia. Abrimos una que ya hemos descargado. Tenemos Leer, Ejemplo, Escuchar y Test.
 
-Ahora cortamos la conexión. La lección sigue disponible: puede leer, consultar el ejemplo y responder el test. La corrección está en el dispositivo y las respuestas quedan guardadas para enviarlas después. La lectura en voz alta utiliza una voz del navegador; para escuchar sin red hace falta una voz local instalada.
+Ahora desconectamos el móvil. Podemos seguir leyendo y responder. La corrección es inmediata y las respuestas quedan guardadas. Arriba vemos cuántas faltan por enviar.
 
-Recuperamos la conexión. Se envían las respuestas pendientes, sin duplicarlas si se reintenta el envío. El docente actualiza las notas y ve lo que ha llegado.
+Recuperamos la conexión con el aula. Mochila envía los pendientes y muestra «Todo enviado». En el portátil, el docente abre «Ver notas» y actualiza el panel: ahí están los resultados del alumno. Un reintento del mismo envío no duplica las respuestas.
 
-## 2:05–2:40 · El valor educativo
+## 1:45–2:20 · Por qué funciona sin Internet
 
-El panel muestra los aciertos por lección y cuándo llegó la última respuesta. Destaca quién tiene resultados bajos o lleva más de tres días sin respuestas recibidas. Es una señal para acompañar al alumno: el retraso también puede deberse a la falta de conexión.
+Hay dos piezas locales. El móvil guarda el material y las respuestas. El ordenador del aula ejecuta la IA, qwen3-vl:4b, con un modelo de unos 3,3 gigabytes descargado previamente. Los móviles no necesitan ejecutar ese modelo.
 
-Mochila combina material revisado por el docente, práctica con feedback y seguimiento. Su funcionamiento no exige mantener una conexión permanente ni enviar el material a una IA en la nube.
+Una wifi local permite compartir el contenido sin salir a Internet. Si el alumno se aleja, sigue trabajando con lo descargado y sincroniza al volver. Si no hay novedades, no vuelve a descargar contenido.
 
-## 2:40–3:00 · El cierre
+En nuestras pruebas de lectura, recuperamos 185 de 185 palabras de una foto realista y 184 de una foto muy mala, sin inventar palabras. Son resultados de esas pruebas, no una garantía para cualquier imagen.
 
-Hoy presentamos un prototipo: todavía debemos probarlo en aulas reales, medir su funcionamiento en dispositivos modestos y evaluar con docentes la calidad de los contenidos.
+## 2:20–2:45 · Impacto
 
-Nuestra propuesta es concreta: que perder la conexión no signifique perder la clase. Mochila lleva el aprendizaje donde Internet no llega.
+El aprendizaje puede continuar durante los cortes. El docente dispone de material revisado, ejercicios con explicación y un panel para detectar quién puede necesitar apoyo. La falta de respuestas también puede significar falta de conexión.
+
+En el despliegue local, el contenido y el progreso permanecen en el aula. La IA solo recibe contenido educativo, nunca datos del alumnado.
+
+## 2:45–3:00 · Siguientes pasos
+
+El siguiente paso es probar Mochila en una escuela: medir tiempos, consumo y funcionamiento en móviles modestos, y evaluar los contenidos con docentes.
+
+Queremos que perder la conexión deje de significar perder la clase.
+
+---
+
+Notas de ensayo, fuera del discurso:
+
+- El flujo nuevo, las medidas de OCR, el tamaño del modelo y los tiempos proceden del equipo; falta contrastarlos con su nueva versión integrada en este ordenador.
+- Para encajar los tres minutos, partir de una lección publicada. La creación completa con IA se demuestra después: la generación tarda unos 45 segundos en el equipo probado, además de la lectura y la revisión.
+- «Escuchar» sin Internet requiere una voz local instalada. Ensayar en el móvil concreto.
+- La afirmación de permanencia en el aula corresponde al despliegue local: sin túneles externos ni GPU remota durante la demostración.
