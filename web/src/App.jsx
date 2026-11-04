@@ -479,7 +479,9 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     try {
       const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
       await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
-      if (borrar) guardarCambiosProfe(leerCambiosProfe().filter(x => x.id !== l.id)) // su cambio sin enviar ya no tiene adónde ir
+      guardarCambiosProfe(borrar
+        ? leerCambiosProfe().filter(x => x.id !== l.id) // su cambio sin enviar ya no tiene adónde ir
+        : leerCambiosProfe().map(x => x.id === l.id ? { ...x, publicar: !l.publicada } : x)) // que al enviarse no la vuelva a publicar
       cargar()
     } catch (e) {
       setError(e.message)
