@@ -210,7 +210,10 @@ PROMPT_LECCION = """Eres maestro de primaria. Con el TEXTO de abajo prepara una 
 - "titulo": corto y claro.
 - "lectura_facil": lo mismo que dice el texto, contado con frases cortas (15 palabras como mucho) y palabras sencillas. Entre 80 y 200 palabras. Usa solo información del texto, no añadas datos.
 - "explicacion_ejemplo": explica la idea principal con un ejemplo de la vida diaria (la casa, la escuela, el campo). De 2 a 4 frases. El ejemplo tiene que ser cierto y tener sentido.
-- "preguntas": 5 preguntas de opción múltiple, todas distintas entre sí, que se puedan contestar con el texto. Cada una con 4 opciones cortas y distintas, una sola correcta. "correcta" es la posición de la opción correcta (0, 1, 2 o 3). "porque" explica en una frase por qué es la correcta.
+- "preguntas": 5 preguntas, todas distintas entre sí, que se puedan contestar con el texto. Para cada una:
+  - "respuesta_correcta": la respuesta buena, corta, sacada del texto.
+  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.
+  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.
 
 TEXTO:
 <<<
@@ -229,13 +232,15 @@ ESQUEMA_LECCION = {
             "maxItems": 5,
             "items": {
                 "type": "object",
+                # La respuesta buena va como texto (y su porqué antes que las incorrectas): los modelos pequeños
+                # se equivocan al dar la posición de la buena, pero no al escribirla.
                 "properties": {
                     "pregunta": {"type": "string"},
-                    "opciones": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "string"}},
-                    "correcta": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "respuesta_correcta": {"type": "string"},
                     "porque": {"type": "string"},
+                    "incorrectas": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string"}},
                 },
-                "required": ["pregunta", "opciones", "correcta", "porque"],
+                "required": ["pregunta", "respuesta_correcta", "porque", "incorrectas"],
             },
         },
     },
@@ -322,6 +327,17 @@ def barajar_opciones(leccion):
     return leccion
 
 
+def juntar_opciones(leccion):
+    """De lo que da la IA (la buena y 3 incorrectas) a lo que guarda la app: 4 opciones y la posición de la buena."""
+    if isinstance(leccion, dict) and isinstance(leccion.get("preguntas"), list):
+        leccion["preguntas"] = [
+            {"pregunta": p.get("pregunta"), "opciones": [p.get("respuesta_correcta"), *p["incorrectas"]], "correcta": 0, "porque": p.get("porque", "")}
+            if isinstance(p, dict) and isinstance(p.get("incorrectas"), list) else p
+            for p in leccion["preguntas"]
+        ]
+    return leccion
+
+
 def crear_leccion_con_ia(texto):
     for _ in range(2):  # si sale mal, se intenta una vez más
         respuesta = preguntar_ia(PROMPT_LECCION.format(texto=texto), formato=ESQUEMA_LECCION, max_tokens=2500)
@@ -329,6 +345,7 @@ def crear_leccion_con_ia(texto):
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
             continue
+        leccion = juntar_opciones(leccion)
         if leccion_valida(leccion):
             return barajar_opciones(leccion)
     raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
