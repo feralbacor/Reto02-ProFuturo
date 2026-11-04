@@ -690,8 +690,8 @@ class NuevoAlumno(BaseModel):
     nombre: str
     usuario: str
     contrasena: str
-    clase: str | None = None  # sin el código de una clase no se puede crear un usuario...
-    alumno_id: str | None = None  # ...salvo un alumno de antes (entró solo con su nombre), que conserva sus clases
+    clase: str | None = None  # opcional: sin código se crea sin clase y entra después con «Entrar en otra clase»
+    alumno_id: str | None = None  # un alumno de antes (entró solo con su nombre), que conserva sus clases
 
 
 @app.post("/api/alumnos")
@@ -704,7 +704,7 @@ def crear_alumno(datos: NuevoAlumno):
         raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
     comprobar_contrasena(datos.contrasena)
     with closing(db()) as c, c:
-        clase = None if datos.alumno_id else buscar_clase(c, datos.clase or "")
+        clase = buscar_clase(c, datos.clase) if datos.clase and not datos.alumno_id else None  # un código mal escrito sigue dando error
         if c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (usuario,)).fetchone():
             libre = usuario_libre(c, usuario)
             raise HTTPException(409, {"mensaje": f"El usuario «{usuario}» ya existe. Prueba con «{libre}».", "sugerencia": libre})
@@ -718,7 +718,8 @@ def crear_alumno(datos: NuevoAlumno):
         else:
             alumno_id = str(uuid.uuid4())
             c.execute("INSERT INTO alumnos (id, nombre) VALUES (?, ?)", (alumno_id, nombre))
-            c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
+            if clase:
+                c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
         guardar_contrasena(c, alumno_id, datos.contrasena, usuario)
     return {"id": alumno_id, "usuario": usuario, "nombre": nombre}
 

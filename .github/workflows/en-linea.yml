@@ -1,0 +1,27 @@
+# Cada push a main: compila la web y deja web + api en la rama «en-linea».
+# El servidor (https://51.95.206.229) la baja cada minuto y la pone en línea. Ver AGENTS.md.
+name: En línea
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+concurrency: en-linea
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: web
+      - name: Publicar en la rama en-linea
+        run: |
+          mkdir salida && cp -r api salida/api && cp -r web/dist salida/web
+          cd salida && git init -q -b en-linea && git add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "main ${GITHUB_SHA::7}: $(git -C .. log -1 --format=%s)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" en-linea
