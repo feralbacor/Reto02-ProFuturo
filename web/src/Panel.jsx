@@ -25,7 +25,7 @@ export default function PanelClase({ codigo, onVolver }) {
   }, [codigo, revision])
 
   const quitar = async (alumno) => {
-    if (quitando || !window.confirm(`¿Quitar a ${alumno.nombre} de la clase? Se borran sus respuestas de esta clase.`)) return
+    if (quitando || !window.confirm(`¿Quitar a ${alumno.nombre} de la clase? Se borran sus respuestas y dudas de esta clase.`)) return
     setQuitando(alumno.id)
     setErrorBaja('')
     try {
