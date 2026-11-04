@@ -300,6 +300,7 @@
  "PIN incorrecto.": "Wrong PIN.",
  "Usuario o contraseña incorrectos.": "Wrong username or password.",
  "Eso no está en esta lección. Pregúntaselo a tu profe.": "That's not in this lesson. Ask your teacher.",
+ "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección.": "That has nothing to do with this lesson, so I can't answer it. Ask me something about the lesson.",
  "No hay ninguna clase con ese código.": "There's no class with that code.",
  "El alumno ya no está en esta clase.": "The student is no longer in this class."
 }
