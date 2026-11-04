@@ -122,6 +122,7 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - `NIVELES` y `TIPO_PREGUNTAS` dicen cómo es cada nivel. `esquema_con_nivel()` cambia el número de preguntas y el largo máximo.
 - Del nivel 3 al 5 se leen hasta 20 000 letras del texto (antes 8 000).
 - **Sin límite de palabras:** la lectura y el ejemplo no tienen largo máximo, y la IA escribe hasta acabar (`num_predict: -2`, como mucho hasta llenar el contexto, para que no se quede repitiendo sin fin). Se le espera hasta 30 min.
+- **Contexto fijo de 16 384 para todo** (`CONTEXTO` en `main.py`, unos 5,7 GB de RAM). Antes cambiaba entre 8 192 y 16 384: Ollama recargaba el modelo en cada cambio y una vez se quedó colgado.
 
 **Probado con Qwen** (un tema de Arquitectura de Computadores de 3.º de carrera, PDF de 14 000 letras, Mac M3): nivel 1 en 45 s (115 palabras, 5 preguntas sencillas); nivel 5 en unos 5 min (419 palabras técnicas, 10 preguntas).
 
