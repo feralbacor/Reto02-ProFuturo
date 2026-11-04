@@ -108,27 +108,62 @@ function guardarPendientesProfe(lista) {
 }
 const cambiarPendienteProfe = (item) => guardarPendientesProfe(leerPendientesProfe().map(p => p.id === item.id ? item : p))
 
-function usePendientesProfe() {
-  const [lista, setLista] = useState(leerPendientesProfe)
+// Cambios a lecciones ya preparadas (publicadas o borradores) hechos sin conexión: el último de cada una.
+const leerCambiosProfe = () => leer('profe-cambios', [])
+function guardarCambiosProfe(lista) {
+  guardar('profe-cambios', lista)
+  window.dispatchEvent(new Event('profe-pendientes'))
+  return JSON.stringify(leerCambiosProfe()) === JSON.stringify(lista) // false: no cabe en el aparato
+}
+const guardarCambioProfe = (cambio) => {
+  const antes = leerCambiosProfe().find(c => c.id === cambio.id)
+  return guardarCambiosProfe([...leerCambiosProfe().filter(c => c.id !== cambio.id), { ...cambio, publicar: cambio.publicar || !!antes?.publicar }])
+}
+
+// Lo mismo que comprueba la API (leccion_valida), para avisar ya sin conexión.
+const textoLleno = (t) => typeof t === 'string' && t.trim() !== ''
+const leccionValida = (l) => ['titulo', 'lectura_facil', 'explicacion_ejemplo'].every(k => textoLleno(l[k]))
+  && new Set(l.preguntas.map(p => p.pregunta.trim().toLowerCase())).size === l.preguntas.length
+  && l.preguntas.every(p => textoLleno(p.pregunta) && p.opciones.every(textoLleno) && new Set(p.opciones.map(o => o.trim().toLowerCase())).size === 4)
+
+function useEnAparato(leerLista) {
+  const [lista, setLista] = useState(leerLista)
   useEffect(() => {
-    const ver = () => setLista(leerPendientesProfe())
+    const ver = () => setLista(leerLista())
     window.addEventListener('profe-pendientes', ver)
     return () => window.removeEventListener('profe-pendientes', ver)
-  }, [])
+  }, [leerLista])
   return lista
 }
+const usePendientesProfe = () => useEnAparato(leerPendientesProfe)
+const useCambiosProfe = () => useEnAparato(leerCambiosProfe)
 
 // Errores que se arreglan solos (sin red, IA apagada u ocupada): se vuelve a probar más tarde.
 const esPasajero = (e) => e.message === SIN_CONEXION || !e.estado || e.estado >= 500 || e.estado === 429
+// La IA ha contestado con un error (apagada, lenta o mal): se dice al momento, no se deja esperando en «Por preparar».
+const fallaLaIa = (e) => typeof e.detalle === 'string' && e.estado >= 502 && e.estado <= 504
 
-// Lee las fotos que falten y prepara la lección. Tras cada foto llama a alAvanzar con lo que lleva, para no repetirla.
+// Las fotos las lee la IA; los PDF, Word, PowerPoint… los abre la API y saca su texto.
+const esImagen = (datos) => datos.startsWith('data:image/')
+const leerAdjunto = (codigo, datos) => esImagen(datos)
+  ? api(`/api/clases/${encodeURIComponent(codigo)}/leer-foto`, { method: 'POST', body: { imagen: datos } })
+  : api(`/api/clases/${encodeURIComponent(codigo)}/leer-archivo`, { method: 'POST', body: { archivo: datos } })
+
+const leerComoDatos = (archivo) => new Promise((resolve, reject) => {
+  const lector = new FileReader()
+  lector.onload = () => resolve(lector.result)
+  lector.onerror = () => reject(new Error(`No se puede abrir «${archivo.name}».`))
+  lector.readAsDataURL(archivo)
+})
+
+// Lee las fotos y archivos que falten y prepara la lección. Tras cada foto llama a alAvanzar con lo que lleva, para no repetirla.
 async function prepararLeccion(item, alAvanzar) {
   while (item.fotos.length) {
-    const r = await api(`/api/clases/${encodeURIComponent(item.codigo)}/leer-foto`, { method: 'POST', body: { imagen: item.fotos[0] } })
+    const r = await leerAdjunto(item.codigo, item.fotos[0])
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id } })
 }
 
 let preparandoPendientes = false
@@ -136,16 +171,18 @@ async function prepararPendientesProfe() {
   if (preparandoPendientes) return
   preparandoPendientes = true
   try {
-    for (const item of leerPendientesProfe().filter(p => !p.error)) {
+    for (const c of leerCambiosProfe().filter(c => !c.error)) {
       try {
-        await prepararLeccion(item, cambiarPendienteProfe)
-        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
+        await api(`/api/clases/${encodeURIComponent(c.codigo)}/lecciones/${c.id}`, { method: 'PUT', body: { leccion: c.leccion, publicar: c.publicar } })
+        // Solo se quita si el profe no lo ha vuelto a cambiar mientras se enviaba.
+        const ahora = leerCambiosProfe()
+        if (JSON.stringify(ahora.find(x => x.id === c.id)) === JSON.stringify(c)) guardarCambiosProfe(ahora.filter(x => x.id !== c.id))
       } catch (e) {
-        if (esPasajero(e)) break
-        const ahora = leerPendientesProfe().find(p => p.id === item.id)
-        if (ahora) cambiarPendienteProfe({ ...ahora, error: e.message }) // p. ej. una foto sin texto: lo arregla el profe
+        if (esPasajero(e)) return
+        guardarCambioProfe({ ...c, error: e.message })
       }
     }
+    // Las lecciones «por preparar» ya no se preparan solas (sin cola de la IA): el profe pulsa «Preparar ahora».
   } finally {
     preparandoPendientes = false
   }
@@ -156,7 +193,10 @@ function VistaProfe({ onVolver }) {
   const [sesion, setSesion] = useState(() => leer('profe-sesion', null))
   const [pantalla, setPantalla] = useState('clases')
   const [codigo, setCodigo] = useState(null)
-  const [editando, setEditando] = useState(null) // { id, leccion, publicada }
+  const [editando, setEditando] = useState(null) // { id, leccion, publicada, cambio }
+  const [porPreparar, setPorPreparar] = useState(null) // la lección «por preparar» que se edita
+  const [materiaNueva, setMateriaNueva] = useState('') // la materia en la que se crea la lección
+  const [avisoClase, setAvisoClase] = useState('') // «Publicada…» al volver de revisar una lección
   const salir = useCallback(() => {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
@@ -174,16 +214,17 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={() => setPantalla('nueva')} onNotas={() => setPantalla('notas')} onEditar={editar} />
+    return <ProfeClase codigo={codigo} aviso={avisoClase} onVolver={() => { setAvisoClase(''); setPantalla('clases') }} onNueva={(m) => { setAvisoClase(''); setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+      onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
     return <PanelClase codigo={codigo} onVolver={() => setPantalla('clase')} />
   }
   if (pantalla === 'nueva') {
-    return <ProfeNuevaLeccion codigo={codigo} onVolver={() => setPantalla('clase')} onCreada={editar} />
+    return <ProfeNuevaLeccion codigo={codigo} materia={porPreparar?.materia || materiaNueva} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
   }
   if (pantalla === 'revisar' && editando) {
-    return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
+    return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={(aviso = '') => { setAvisoClase(aviso); setPantalla('clase'); window.scrollTo(0, 0) }} />
   }
   if (!sesion) return <ProfeEntrar onEntrar={(s) => { guardar('profe-sesion', s); setSesion(s) }} onVolver={onVolver} />
   return <ProfeClases profe={sesion} onAbrir={abrirClase} onSalir={salir} />
@@ -292,6 +333,9 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     if (!window.confirm(t('¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.', { nombre: c.nombre }))) return
     try {
       await api(`/api/clases/${encodeURIComponent(c.codigo)}`, { method: 'DELETE' })
+      // Lo que quedara por enviar de esa clase ya no tiene adónde ir.
+      guardarCambiosProfe(leerCambiosProfe().filter(x => x.codigo !== c.codigo))
+      guardarPendientesProfe(leerPendientesProfe().filter(x => x.codigo !== c.codigo))
       setClases(todas => { const quedan = todas.filter(x => x.codigo !== c.codigo); guardar('profe-clases', quedan); return quedan })
     } catch (e) {
       setError(e.message)
@@ -364,7 +408,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
-function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
+function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
   const [error, setError] = useState('')
   const [pidePin, setPidePin] = useState(false)
@@ -422,13 +466,20 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   }
 
   const pendientes = usePendientesProfe().filter(p => p.codigo === codigo)
+  // Los cambios sin enviar se ven ya, encima de lo que dice el ordenador de la clase.
+  const cambios = useCambiosProfe()
+  const conCambios = (l) => {
+    const c = cambios.find(x => x.id === l.id)
+    return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
+  }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada })
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
   const cambiarLeccion = async (l, borrar) => {
     if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
     try {
       const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
       await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
+      if (borrar) guardarCambiosProfe(leerCambiosProfe().filter(x => x.id !== l.id)) // su cambio sin enviar ya no tiene adónde ir
       cargar()
     } catch (e) {
       setError(e.message)
@@ -479,23 +530,27 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
       </div>
 
       <Aviso texto={error} />
+      <Aviso texto={aviso} color={COLOR.verde} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
-        <button onClick={onNueva} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
+        <button onClick={() => onNueva(clase.nombre)} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
         <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />{t('Ver notas')}</button>
       </div>
 
       {pendientes.length > 0 && (
         <section className="seccion">
           <h2 className="seccion-titulo">{t('Por preparar ({n})', { n: pendientes.length })}</h2>
-          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Se prepararán solas cuando haya conexión con el ordenador de la clase y su IA (Ollama) esté encendida. Después las revisas y las publicas.')}</p>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Cuando haya conexión con el ordenador de la clase, pulsa «Preparar ahora». Después las revisas y las publicas.')}</p>
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
-                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{t(p.materia || 'General')} · {p.fotos.length ? plural(p.fotos.length, '{n} foto', '{n} fotos') : t('texto')}</p>
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{t(p.materia || 'General')} · {p.fotos.length ? plural(p.fotos.length, '{n} foto o archivo', '{n} fotos o archivos') : t('texto')}</p>
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || t('Sin texto todavía')}</p>
                 {p.error && <Aviso texto={t('No se ha podido preparar: {error}', { error: t(p.error) })} />}
-                <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>{t('Quitar')}</button>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
+                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Preparar ahora')}</button>
+                  <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Quitar')}</button>
+                </div>
               </div>
             ))}
           </div>
@@ -505,7 +560,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Lecciones')}</h2>
         {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
-        {porMateria(clase.lecciones, l => l.materia).map(([materia, lecciones]) => (
+        {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
           <div key={materia}>
             <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
@@ -513,6 +568,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
                 <div key={l.id} className="fila-con-menu">
                   <button onClick={() => abrirLeccion(l)} className="fila">
                     <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                    {l.cambio && <span className="insignia">{l.cambio.error ? t('Error al guardar') : t('Sin enviar')}</span>}
                     <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
                     <Icono nombre="seguir" className="icono-final" />
                   </button>
@@ -569,35 +625,77 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   )
 }
 
-function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
+// Los mismos niveles que NIVELES de api/main.py: de lo más corto y sencillo a lo más extenso y técnico, según el tema.
+const NIVELES = [
+  { nombre: 'Lo esencial', pista: 'Solo la idea principal, muy corta y muy sencilla.' },
+  { nombre: 'Básico', pista: 'Las ideas principales, con frases cortas.' },
+  { nombre: 'Normal', pista: 'Lo que se espera en ese curso, con sus palabras técnicas explicadas.' },
+  { nombre: 'Completo', pista: 'Todas las ideas del texto, con definiciones. Más largo.' },
+  { nombre: 'Avanzado', pista: 'Técnico y detallado: cómo funciona, tipos, causas y consecuencias.' },
+  { nombre: 'Experto', pista: 'Lo más extenso y técnico. Tarda más.' },
+]
+
+// Los mismos que DIFICULTAD_PREGUNTAS de api/main.py.
+const DIFICULTADES = [
+  { nombre: 'Muy fáciles', pista: 'Recordar un dato que sale tal cual en el texto.' },
+  { nombre: 'Fáciles', pista: 'Recordar y entender las ideas principales.' },
+  { nombre: 'Normales', pista: 'Entender lo que dice el texto, no copiar frases.' },
+  { nombre: 'Algo difíciles', pista: 'Relacionar ideas de distintas partes del texto.' },
+  { nombre: 'Difíciles', pista: 'Aplicar lo aprendido a un caso concreto o comparar conceptos.' },
+  { nombre: 'Muy difíciles', pista: 'Razonar en varios pasos, con casos nuevos y excepciones. Las opciones malas son casi correctas.' },
+]
+
+// Barra para elegir un valor de una lista (nivel, preguntas…), con los valores debajo para tocarlos.
+function Barra({ id, valores, valor, onCambio, disabled, nombre, extremos }) {
+  const i = Math.max(0, valores.indexOf(valor))
+  return (
+    <div className="barra-nivel">
+      <input id={id} type="range" min={0} max={valores.length - 1} step={1} value={i} onChange={e => onCambio(valores[Number(e.target.value)])}
+        disabled={disabled} aria-valuetext={nombre(valor)} />
+      <div className="barra-nivel-marcas" aria-hidden="true">
+        {valores.map(v => <button key={v} type="button" tabIndex={-1} onClick={() => onCambio(v)} disabled={disabled} className={v === valor ? 'elegido' : ''}>{v}</button>)}
+      </div>
+      <div className="barra-nivel-extremos" aria-hidden="true"><span>{extremos[0]}</span><span>{extremos[1]}</span></div>
+    </div>
+  )
+}
+
+function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
   const MAX_FOTOS = 5
-  const [fotos, setFotos] = useState([]) // { id, nombre, datos }
-  const [texto, setTexto] = useState('')
+  // inicial: una lección «por preparar» que se edita (con su id, para que no se duplique).
+  const [fotos, setFotos] = useState(() => (inicial?.fotos || []).map((datos, i) => ({ id: nuevoId(), nombre: inicial.nombres?.[i] || `Archivo ${i + 1}`, datos })))
+  const [texto, setTexto] = useState(inicial?.texto || '')
   const [leidas, setLeidas] = useState(false)
   const [ocupado, setOcupado] = useState('') // qué está haciendo
   const [leyendo, setLeyendo] = useState(false) // para enseñar la espera junto a las fotos o junto al botón final
   const [error, setError] = useState('')
   const camara = useRef(null)
   const galeria = useRef(null)
-  const [materia, setMateria] = useState('')
-  const [titulo, setTitulo] = useState('')
-  const [materias, setMaterias] = useState([])
+  const documento = useRef(null)
+  const [titulo, setTitulo] = useState(inicial?.titulo || '')
   const [ia, setIa] = useState(null)
-  const [lenguaLeccion, setLenguaLeccion] = useState(idioma())
+  const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
+  const [nivel, setNivel] = useState(inicial?.nivel ?? 2)
+  const [cuantas, setCuantas] = useState(inicial?.preguntas ?? 5)
+  const [dificultad, setDificultad] = useState(inicial?.dificultad_preguntas ?? 2)
 
   useEffect(() => {
-    // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
-    api(`/api/clases/${encodeURIComponent(codigo)}`)
-      .catch(() => leer(`profe-clase:${codigo}`, { materias: [] })) // sin conexión, las de la última vez
-      .then(c => { setMaterias(c.materias); setMateria(m => m || c.materias[0] || '') })
     api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
-  }, [codigo])
+  }, [])
 
   const anadir = async (archivos) => {
     setError('')
     for (const archivo of Array.from(archivos || [])) {
       try {
-        const datos = await reducirFoto(archivo)
+        if (archivo.type.startsWith('text/plain') || /\.(txt|md|csv)$/i.test(archivo.name)) {
+          // Un texto se pone directamente en el paso 3 (también sin conexión).
+          const leido = (await archivo.text()).trim()
+          setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + leido)
+          setLeidas(true)
+          continue
+        }
+        if (!archivo.type.startsWith('image/') && archivo.size > 10 * 1024 * 1024) throw new Error(`«${archivo.name}» pesa demasiado: como mucho 10 MB.`)
+        const datos = archivo.type.startsWith('image/') ? await reducirFoto(archivo) : await leerComoDatos(archivo)
         setFotos(f => f.length >= MAX_FOTOS ? f : [...f, { id: nuevoId(), nombre: archivo.name, datos }])
       } catch (e) {
         setError(e.message)
@@ -616,8 +714,11 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     const lista = fotos
     try {
       for (let i = 0; i < lista.length; i++) {
-        setOcupado(lista.length > 1 ? t('Leyendo la foto {i} de {n}…', { i: i + 1, n: lista.length }) : t('Leyendo la foto…'))
-        const r = await api(`/api/clases/${encodeURIComponent(codigo)}/leer-foto`, { method: 'POST', body: { imagen: lista[i].datos } })
+        const nombre = lista[i].nombre
+        setOcupado(esImagen(lista[i].datos)
+          ? (lista.length > 1 ? t('Leyendo la foto {i} de {n}…', { i: i + 1, n: lista.length }) : t('Leyendo la foto…'))
+          : t('Leyendo «{nombre}»…', { nombre }))
+        const r = await leerAdjunto(codigo, lista[i].datos)
         setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + r.texto)
         setFotos(f => f.filter(x => x.id !== lista[i].id))
         setLeidas(true)
@@ -632,13 +733,15 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(fotos.length ? t('Leyendo las fotos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
-    let item = { id: nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
+    setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
+    // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
+    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, preguntas: cuantas, dificultad_preguntas: dificultad, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
+      if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
-      if (!esPasajero(e)) {
+      if (!esPasajero(e) || fallaLaIa(e)) {
         setTexto(item.texto) // lo que se haya leído de las fotos no se pierde
         setFotos(f => f.slice(f.length - item.fotos.length))
         setError(e.message)
@@ -646,15 +749,14 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
         return
       }
       // Sin conexión (o la IA apagada): se guarda en el aparato y se prepara sola más tarde.
-      if (!guardarPendientesProfe([...leerPendientesProfe(), item])) {
-        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
+      const antes = leerPendientesProfe() // si se está editando, la nueva sustituye a la de antes
+      if (!guardarPendientesProfe([...antes.filter(p => p.id !== item.id), item])) {
+        guardarPendientesProfe(antes)
         setError('No cabe en este aparato. Quita alguna foto o escribe el texto.')
         setOcupado('')
         return
       }
-      window.alert(e.message === SIN_CONEXION
-        ? t('Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.')
-        : `${t(e.message)} ${t('La lección queda guardada y se preparará sola cuando la IA esté lista.')}`)
+      window.alert(t('Sin conexión con el ordenador de la clase. La lección queda guardada en «Por preparar»: cuando vuelva la conexión, pulsa «Preparar ahora».'))
       onVolver()
     }
   }
@@ -665,10 +767,11 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>{t('La clase')}</Volver></header>
-      <h1 className="titulo">{t('Nueva lección')}</h1>
-      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.')}</p>
+      <p className="subtitulo" style={{ margin: '0 0 4px' }}>{t(materia || 'General')}</p>
+      <h1 className="titulo">{inicial ? t('Lección por preparar') : t('Nueva lección')}</h1>
+      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura, un ejemplo y las preguntas. Tú la revisas antes de publicarla.')}</p>
       {ia === 'apagada' && (
-        <p className="aviso aviso-atencion"><strong>{t('La lectura de fotos está apagada')}</strong>{t('Enciende Ollama en el ordenador de la clase. Mientras, puedes escribir o pegar el texto.')}</p>
+        <p className="aviso aviso-atencion"><strong>{t('La lectura de fotos está apagada')}</strong>{t('Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.')}</p>
       )}
 
       <section className="seccion">
@@ -679,37 +782,40 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Las fotos de la página')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Contenido')}</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />{t('Hacer una foto')}</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />{t('Elegir fotos')}</button>
+          <button onClick={() => documento.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="archivo" />{t('Subir un archivo')}</button>
         </div>
-        <p className="pista">{t('Hasta {n} fotos. Que se vea la página entera y con buena luz.', { n: MAX_FOTOS })}</p>
+        <p className="pista">{t('Hasta {n}. Fotos de la página (que se vea entera y con buena luz), o un PDF, Word, PowerPoint, LibreOffice o texto.', { n: MAX_FOTOS })}</p>
         <input ref={camara} type="file" accept="image/*" capture="environment" onChange={alElegir} hidden />
         <input ref={galeria} type="file" accept="image/*" multiple onChange={alElegir} hidden />
+        <input ref={documento} type="file" multiple onChange={alElegir} hidden
+          accept=".pdf,.docx,.pptx,.odt,.odp,.txt,.md,.csv,.html,.htm,image/*,application/pdf,text/*" />
 
         {fotos.length > 0 && (
           <>
             <div className="fotos" style={{ marginTop: 16 }}>
               {fotos.map((f, i) => (
                 <div key={f.id} className="tarjeta foto">
-                  <img src={f.datos} alt={t('Foto {n}', { n: i + 1 })} />
+                  {esImagen(f.datos)
+                    ? <img src={f.datos} alt={t('Foto {n}', { n: i + 1 })} />
+                    : <p className="fila-titulo" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 4px', wordBreak: 'break-word' }}><Icono nombre="archivo" />{f.nombre}</p>}
                   <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado} className="boton boton-fantasma boton-ancho">{t('Quitar')}</button>
                 </div>
               ))}
             </div>
             <button onClick={leerFotos} disabled={!!ocupado} className="boton boton-principal boton-ancho" style={{ marginTop: 16 }}>
-              {fotos.length === 1 ? t('Leer la foto') : t('Leer las {n} fotos', { n: fotos.length })}
+              {!fotos.every(f => esImagen(f.datos))
+                ? (fotos.length === 1 ? t('Leer el archivo') : t('Leer los {n} archivos', { n: fotos.length }))
+                : (fotos.length === 1 ? t('Leer la foto') : t('Leer las {n} fotos', { n: fotos.length }))}
             </button>
           </>
         )}
         {leyendo && espera}
-      </section>
-
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
-        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
-          {leidas ? t('Esto es lo que pone en las fotos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
+        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '20px 0 10px' }}>
+          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.')}
         </label>
         <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
           placeholder={t('El texto de la página del libro…')} />
@@ -717,10 +823,29 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('La materia')}</h2>
-        <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
-          placeholder={t('Por ejemplo: Ciencias')} disabled={!!ocupado} aria-label={t('Materia')} />
-        <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
+        <h2 className="paso-profe"><span className="paso-profe-num">3</span><label htmlFor="nivel-leccion">{t('El nivel')}</label></h2>
+        <Barra id="nivel-leccion" valores={[0, 1, 2, 3, 4, 5]} valor={nivel} onCambio={setNivel} disabled={!!ocupado}
+          nombre={i => t(NIVELES[i].nombre)} extremos={[t('Más corto y sencillo'), t('Más extenso y técnico')]} />
+        <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('Las preguntas')}</h2>
+        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cantidad')}</label>
+        <Barra id="cuantas-preguntas" valores={[0, 5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
+          nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('Sin preguntas'), t('30 preguntas')]} />
+        {cuantas > 0 && (
+          <>
+            <label htmlFor="dificultad-preguntas" className="etiqueta" style={{ fontSize: 17, marginTop: 18 }}>{t('Dificultad')}</label>
+            <Barra id="dificultad-preguntas" valores={[0, 1, 2, 3, 4, 5]} valor={dificultad} onCambio={setDificultad} disabled={!!ocupado}
+              nombre={i => t(DIFICULTADES[i].nombre)} extremos={[t('Muy fáciles'), t('Muy difíciles')]} />
+          </>
+        )}
+        <p className="pista">
+          {cuantas === 0 ? t('La lección no llevará test: solo la lectura y el ejemplo.')
+            : <><strong>{plural(cuantas, '{n} pregunta', '{n} preguntas')} · {t(DIFICULTADES[dificultad].nombre)}.</strong> {t(DIFICULTADES[dificultad].pista)}</>}
+          {cuantas >= 20 && ` ${t('Con muchas preguntas tarda más.')}`}
+        </p>
       </section>
 
       <section className="seccion">
@@ -742,9 +867,11 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
 
 function ProfeRevisar({ codigo, inicial, onVolver }) {
   const [leccion, setLeccion] = useState(inicial.leccion)
-  const [publicada, setPublicada] = useState(!!inicial.publicada)
+  const [publicada] = useState(!!inicial.publicada)
   const [guardando, setGuardando] = useState(false)
-  const [aviso, setAviso] = useState({ texto: '', color: COLOR.verde })
+  const [aviso, setAviso] = useState(() => !inicial.cambio ? { texto: '', color: COLOR.verde }
+    : inicial.cambio.error ? { texto: `No se han podido guardar tus cambios: ${inicial.cambio.error}`, color: COLOR.rojo }
+      : { texto: 'Tienes cambios guardados en este aparato que se enviarán al volver la conexión.', color: COLOR.verde })
 
   const cambiar = (clave, valor) => setLeccion(l => ({ ...l, [clave]: valor }))
   const cambiarPregunta = (i, cambios) => setLeccion(l => ({
@@ -760,13 +887,15 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     try {
       const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
-      if (publicar) setPublicada(true)
-      setAviso({
-        texto: publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'),
-        color: COLOR.verde,
-      })
+      // Un cambio viejo de esta lección que esperaba en el aparato ya no vale: lo de ahora es lo último.
+      if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
+      onVolver(publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'))
     } catch (e) {
-      setAviso({ texto: e.message, color: COLOR.rojo })
+      // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
+      if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
+      if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
+      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      onVolver(t('Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.'))
     } finally {
       setGuardando(false)
     }
@@ -779,7 +908,7 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={onVolver}>{t('La clase')}</Volver>
+        <Volver onClick={() => onVolver()}>{t('La clase')}</Volver>
         {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
       <h1 className="titulo">{publicada ? t('Lección publicada') : t('Revisa la lección')}</h1>
@@ -808,7 +937,9 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Las preguntas')}</h2>
-        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')}</p>
+        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{leccion.preguntas.length
+          ? t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')
+          : t('Esta lección no lleva preguntas: los alumnos solo leen y ven el ejemplo.')}</p>
         {leccion.preguntas.map((p, i) => (
           <fieldset key={i} className="tarjeta" style={{ marginBottom: 16 }}>
             <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta {n}', { n: i + 1 })}</legend>
@@ -825,8 +956,8 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
             <input id={`porque-${i}`} className="campo" value={p.porque} onChange={e => cambiarPregunta(i, { porque: e.target.value })} style={{ fontSize: 18 }} />
           </fieldset>
         ))}
-        {/* va al final: las respuestas de los alumnos guardan la posición de cada pregunta. La API admite hasta 10. */}
-        {leccion.preguntas.length < 10 && (
+        {/* va al final: las respuestas de los alumnos guardan la posición de cada pregunta. La API admite hasta 30. */}
+        {leccion.preguntas.length < 30 && (
           <button onClick={() => cambiar('preguntas', [...leccion.preguntas, { pregunta: '', opciones: ['', '', '', ''], correcta: 0, porque: '' }])}
             className="boton boton-secundario boton-ancho">{t('+ Añadir una pregunta')}</button>
         )}
@@ -1394,10 +1525,11 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
   const [fallada, setFallada] = useState(null) // la opción del primer intento, si falló y hay pista
   const [aciertos, setAciertos] = useState(0)
   const [terminado, setTerminado] = useState(false)
-  const pregunta = preguntas[n]
+  const conTest = preguntas.length > 0 // el profe puede hacer lecciones sin preguntas
+  const pregunta = preguntas[n] || { pregunta: '', opciones: [], correcta: 0 }
   const acierto = elegida === pregunta.correcta
   // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
-  const pista = buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`)
+  const pista = conTest ? buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`) : []
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
@@ -1433,7 +1565,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
       <h1 className="titulo">{leccion.titulo}</h1>
 
       <nav className="pasos" aria-label={t('Pasos de la lección')}>
-        {[t('Leer'), t('Ejemplo'), t('Preguntas')].map((nombre, i) => (
+        {[t('Leer'), t('Ejemplo'), t('Preguntas')].slice(0, conTest ? 3 : 2).map((nombre, i) => (
           <button key={i} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
             className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {nombre}</button>
         ))}
@@ -1445,8 +1577,8 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} lengua={leccion.contenido.idioma} /></div>
             <p className="hoja-texto">{paso === 0 ? lectura_facil : explicacion_ejemplo}</p>
           </article>
-          <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
-            {paso === 0 ? t('Ya lo he leído') : t('Ir a las preguntas')}<Icono nombre="seguir" />
+          <button onClick={() => paso === 1 && !conTest ? onVolver() : irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
+            {paso === 0 ? t('Ya lo he leído') : conTest ? t('Ir a las preguntas') : t('Volver a mis lecciones')}<Icono nombre="seguir" />
           </button>
           <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>

@@ -311,5 +311,8 @@
  "¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.": "Delete the class «{nombre}»? Its lessons and its students' marks will be deleted. This cannot be undone.",
  "Ocultar a los alumnos": "Hide from students",
  "Eliminar la lección": "Delete the lesson",
- "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Delete the lesson «{titulo}»? Your students' marks and questions on it will be deleted too. This cannot be undone."
+ "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Delete the lesson «{titulo}»? Your students' marks and questions on it will be deleted too. This cannot be undone.",
+ "Contenido": "Content",
+ "Cantidad": "Amount",
+ "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "If you have no photo or file, type or paste the text or information here."
 }

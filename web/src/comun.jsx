@@ -35,6 +35,7 @@ const TRAZOS = {
   seguir: 'M9 5l7 7-7 7',
   camara: 'M4 8h3l2-3h6l2 3h3v11H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   fotos: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4 M15.5 9.5h.01',
+  archivo: 'M14 3H6v18h12V7z M14 3v4h4 M9 13h6 M9 17h6',
   altavoz: 'M4 9v6h4l5 4V5L8 9z M16.5 8.5a5 5 0 0 1 0 7 M19 6a8.5 8.5 0 0 1 0 12',
   parar: 'M7 7h10v10H7z',
   bien: 'M5 12.5l4.5 4.5L19 7.5',

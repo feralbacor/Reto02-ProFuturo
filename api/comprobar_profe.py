@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto, idioma="es": llamadas.append(texto) or {**leccion, "idioma": idioma}
+main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1, n=None, dif=None: llamadas.append((texto, nivel, n, dif)) or {**leccion, "idioma": idioma, "nivel": nivel}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid
@@ -65,11 +65,80 @@ assert sin_titulo["leccion"]["titulo"] == "Las plantas"
 assert {l["titulo"] for l in api.get(f"/api/clases/{suya}", headers=sesion).json()["lecciones"]} == {"Las plantas", "Mi título"}
 print("Título de la lección: todo bien")
 
+# Archivos: Word, PowerPoint (en orden de diapositiva), LibreOffice, texto y PDF; lo demás, un aviso claro.
+import base64  # noqa: E402
+import io  # noqa: E402
+import zipfile  # noqa: E402
+
+
+def zip_con(partes):
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for nombre, xml in partes.items():
+            z.writestr(nombre, xml)
+    return b.getvalue()
+
+
+def leer(crudo):
+    return api.post(f"/api/clases/{suya}/leer-archivo", json={"archivo": "data:x;base64," + base64.b64encode(crudo).decode()}, headers=sesion)
+
+
+frase = "El agua se evapora, forma nubes y cae como lluvia."
+assert leer(zip_con({"word/document.xml": f"<w:p><w:r><w:t>El ciclo &amp; el agua</w:t></w:r></w:p><w:p><w:t>{frase}</w:t></w:p>"})).json()["texto"] == f"El ciclo & el agua\n{frase}"
+diapos = zip_con({"ppt/slides/slide10.xml": f"<a:p><a:t>Diez {frase}</a:t></a:p>", "ppt/slides/slide2.xml": f"<a:p><a:t>Dos {frase}</a:t></a:p>"})
+assert leer(diapos).json()["texto"].startswith("Dos")
+assert frase in leer(zip_con({"content.xml": f"<text:p>{frase}</text:p>"})).json()["texto"]
+assert leer(f"# Apuntes\n\n{frase}".encode()).json()["texto"] == f"# Apuntes\n\n{frase}"
+assert leer(zip_con({"otra/cosa.xml": "<a/>"})).status_code == 415
+assert leer(bytes(range(256)) * 10).status_code == 415
+assert leer(b"corto").status_code == 422
+# Un PDF de una página con una frase (hecho a mano: así la prueba no necesita más librerías).
+flujo = f"BT /F1 12 Tf 72 720 Td ({frase}) Tj ET".encode()
+objetos = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+           b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+           b"<</Length %d>>stream\n" % len(flujo) + flujo + b"\nendstream", b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"]
+pdf, posiciones = b"%PDF-1.4\n", []
+for i, o in enumerate(objetos, 1):
+    posiciones.append(len(pdf))
+    pdf += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+xref = len(pdf)
+pdf += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % p for p in posiciones)
+pdf += b"trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % xref
+r = leer(pdf)
+assert r.status_code in (200, 503), r.text  # 503: falta pypdf en este ordenador
+if r.status_code == 200:
+    assert r.json()["texto"] == frase, r.json()
+print("Leer archivos: todo bien" + ("" if r.status_code == 200 else " (sin probar PDF: falta pypdf)"))
 # Con main (idiomas): la lección va en el idioma elegido y conserva el título del profe; un idioma que no está, 400.
 fr = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titulo": "L'eau", "idioma": "fr"}, headers=sesion).json()
 assert fr["leccion"]["idioma"] == "fr" and fr["leccion"]["titulo"] == "L'eau"
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "idioma": "xx"}, headers=sesion).status_code == 400
 print("Idioma de la lección: todo bien")
+
+# Nivel de dificultad: de 0 a 5 (por defecto 1, como antes); llega a la IA y se guarda en la lección.
+alto = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 5}, headers=sesion).json()
+assert alto["leccion"]["nivel"] == 5 and llamadas[-1][1] == 5
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None}, headers=sesion).json()["leccion"]["nivel"] == 1
+assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 6}, headers=sesion).status_code == 400
+assert main.esquema_con_nivel(5, 30, 2)["properties"]["preguntas"]["maxItems"] == 30 and main.ESQUEMA_LECCION["properties"]["preguntas"]["maxItems"] == 5
+for n in main.NIVELES:  # el prompt se puede rellenar en todos los niveles
+    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", largo="", frases="1", preguntas="")
+assert "maxLength" not in main.esquema_con_nivel(0, 5, 0)["properties"]["lectura_facil"]
+print("Nivel de dificultad: todo bien")
+
+# Preguntas: cuántas (0 a 30 de 5 en 5) y su dificultad (0 a 5) llegan a la IA; lo demás, 400.
+api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "preguntas": 30, "dificultad_preguntas": 5}, headers=sesion)
+assert llamadas[-1][2:] == (30, 5)
+api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "preguntas": 0}, headers=sesion)
+assert llamadas[-1][2:] == (0, None)
+for malo in ({"preguntas": 7}, {"preguntas": 35}, {"preguntas": -5}, {"dificultad_preguntas": 6}):
+    assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, **malo}, headers=sesion).status_code == 400, malo
+# Una lección sin preguntas es válida; las repetidas o con opciones repetidas se quitan.
+assert main.leccion_valida({**leccion, "preguntas": []})
+p = {"pregunta": "¿A?", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": ""}
+limpia = main.quitar_preguntas_malas({"preguntas": [p, dict(p, pregunta=" ¿a? "), dict(p, pregunta="¿B?", opciones=["1", "1", "3", "4"]), dict(p, pregunta="¿C?")]})
+assert [x["pregunta"] for x in limpia["preguntas"]] == ["¿A?", "¿C?"]
+print("Número y dificultad de las preguntas: todo bien")
 
 # Crear usuario de estudiante: el código de la clase es opcional, pero si se escribe mal sigue dando error.
 sin = api.post("/api/alumnos", json={"nombre": "Feli", "usuario": "felisinclase", "contrasena": "1234"})

@@ -1,0 +1,2 @@
+# Lo instala solo el servidor en línea (ver AGENTS.md). FastAPI y uvicorn ya están allí.
+pypdf>=5  # leer PDF en «Subir un archivo»

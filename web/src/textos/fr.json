@@ -311,5 +311,8 @@
  "¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.": "Supprimer la classe « {nombre} » ? Ses leçons et les notes de ses élèves seront supprimées. C'est définitif.",
  "Ocultar a los alumnos": "Cacher aux élèves",
  "Eliminar la lección": "Supprimer la leçon",
- "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Supprimer la leçon « {titulo} » ? Les notes et les questions de tes élèves seront aussi supprimées. C'est définitif."
+ "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Supprimer la leçon « {titulo} » ? Les notes et les questions de tes élèves seront aussi supprimées. C'est définitif.",
+ "Contenido": "Contenu",
+ "Cantidad": "Quantité",
+ "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "Si tu n'as ni photo ni fichier, écris ou colle ici le texte ou l'information."
 }
