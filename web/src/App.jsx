@@ -731,7 +731,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Las fotos o los archivos')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Contenido')}</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />{t('Hacer una foto')}</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />{t('Elegir fotos')}</button>
@@ -763,6 +763,12 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
           </>
         )}
         {leyendo && espera}
+        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '20px 0 10px' }}>
+          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.')}
+        </label>
+        <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
+          placeholder={t('El texto de la página del libro…')} />
+        {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
       </section>
 
       <section className="seccion">
@@ -774,7 +780,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
       <section className="seccion">
         <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('Las preguntas')}</h2>
-        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cuántas')}</label>
+        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cantidad')}</label>
         <Barra id="cuantas-preguntas" valores={[0, 5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
           nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('Sin preguntas'), t('30 preguntas')]} />
         {cuantas > 0 && (
@@ -792,19 +798,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
-        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
-          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
-        </label>
-        <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
-          placeholder={t('El texto de la página del libro…')} />
-        {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
-      </section>
-
-
-
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">6</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>
