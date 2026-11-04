@@ -9,6 +9,7 @@ export default function PanelClase({ codigo, onVolver }) {
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const [revision, setRevision] = useState(0)
+  const [quitando, setQuitando] = useState(null)
 
   useEffect(() => {
     let activo = true
@@ -22,12 +23,26 @@ export default function PanelClase({ codigo, onVolver }) {
     return () => { activo = false }
   }, [codigo, revision])
 
+  const quitar = async (alumno) => {
+    if (quitando || !window.confirm(`¿Quitar a ${alumno.nombre} de la clase? Se borran sus respuestas de esta clase.`)) return
+    setQuitando(alumno.id)
+    setError('')
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${encodeURIComponent(alumno.id)}`, { method: 'DELETE' })
+      setRevision(r => r + 1)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setQuitando(null)
+    }
+  }
+
   const atras = datos?.alumnos.filter(a => a.motivos.length) || []
   return (
     <div style={{ ...pagina, fontSize: '18px' }}>
       <button onClick={onVolver} style={botonVolver}>Volver a la clase</button>
       <h1 style={titulo}>Notas de la clase</h1>
-      <button disabled={cargando} onClick={() => setRevision(r => r + 1)} style={boton()}>Actualizar notas</button>
+      <button disabled={cargando || !!quitando} onClick={() => setRevision(r => r + 1)} style={boton()}>Actualizar notas</button>
       {cargando && <Cargando texto="Cargando notas…" />}
       <Aviso texto={error} />
       {datos && <>
@@ -38,18 +53,23 @@ export default function PanelClase({ codigo, onVolver }) {
           <ul style={{ paddingLeft: '24px' }}>{atras.map(a => <li key={a.id} style={{ marginBottom: '12px' }}><strong>{a.nombre}</strong>: {a.motivos.join(' ')}</li>)}</ul>
           <p>Comprueba si necesita ayuda o si todavía no ha podido enviar sus respuestas.</p>
         </section>}
-        {!datos.alumnos.length ? <p>No hay alumnos inscritos todavía.</p> : !datos.lecciones.length ? <p>No hay lecciones publicadas todavía.</p> : <>
+        {!datos.alumnos.length ? <p>No hay alumnos inscritos todavía.</p> : <>
+          {!datos.lecciones.length && <p>No hay lecciones publicadas todavía.</p>}
           <p id="tabla-ayuda" style={{ marginBottom: '12px' }}>Desliza la tabla para ver todas las lecciones. Los tests incompletos muestran cuántas preguntas se han respondido.</p>
           <div role="region" aria-label="Notas por alumno y lección" aria-describedby="tabla-ayuda" tabIndex={0} style={{ overflowX: 'auto', maxWidth: '100%', backgroundColor: 'white', border: `1px solid ${COLOR.borde}`, borderRadius: '12px' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '18px' }}>
               <caption style={{ padding: '14px', textAlign: 'left', fontWeight: 'bold' }}>Aciertos por lección · {datos.codigo}</caption>
-              <thead><tr><th scope="col" style={celda}>Alumno</th>{datos.lecciones.map(l => <th key={l.id} scope="col" style={{ ...celda, minWidth: '180px' }}>{l.titulo}</th>)}<th scope="col" style={{ ...celda, minWidth: '180px' }}>Última respuesta</th></tr></thead>
+              <thead><tr><th scope="col" style={celda}>Alumno</th>{datos.lecciones.map(l => <th key={l.id} scope="col" style={{ ...celda, minWidth: '180px' }}>{l.titulo}</th>)}<th scope="col" style={{ ...celda, minWidth: '180px' }}>Última respuesta</th><th scope="col" style={celda}>Gestionar alumno</th></tr></thead>
               <tbody>{datos.alumnos.map(a => <tr key={a.id}>
                 <th scope="row" style={celda}>{a.nombre}</th>
                 {a.notas.map(n => <td key={n.leccion_id} style={celda}>
                   {n.respondidas ? <><strong>{n.aciertos}/{n.total} aciertos</strong>{n.respondidas < n.total && <p>En curso: {n.respondidas}/{n.total} respondidas</p>}<p style={{ marginTop: '8px' }}>{fecha(n.ultima_respuesta)}</p></> : 'Sin respuestas'}
                 </td>)}
                 <td style={celda}>{fecha(a.ultima_respuesta)}</td>
+                <td style={celda}><button disabled={!!quitando || cargando} onClick={() => quitar(a)}
+                  aria-label={`Quitar de la clase a ${a.nombre}`} style={boton(COLOR.gris, { minHeight: '48px', fontSize: '18px' })}>
+                  {quitando === a.id ? 'Quitando…' : 'Quitar de la clase'}
+                </button></td>
               </tr>)}</tbody>
             </table>
           </div>

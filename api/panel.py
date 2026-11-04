@@ -1,4 +1,4 @@
-"""Notas de la clase: solo lectura, sin cambiar el esquema compartido."""
+"""Notas y matrículas de la clase, sin cambiar el esquema compartido."""
 import json
 import os
 import sqlite3
@@ -67,3 +67,17 @@ def panel(codigo: str):
             motivos.append('Más de 3 días sin respuestas recibidas.' if ultima else 'Más de 3 días sin recibir ninguna respuesta desde su inscripción.')
         resultado.append(dict(id=alumno['id'], nombre=alumno['nombre'], notas=notas, ultima_respuesta=ultima, motivos=motivos))
     return {**dict(clase), 'lecciones': [dict(id=l['id'], titulo=l['titulo']) for l in lecciones], 'alumnos': resultado}
+
+
+@router.delete('/api/clases/{codigo}/alumnos/{alumno_id}')
+def quitar_alumno(codigo: str, alumno_id: str):
+    codigo = ''.join(c for c in codigo.upper() if c.isascii() and c.isalnum())
+    with closing(db()) as c, c:
+        if not c.execute('SELECT 1 FROM clases WHERE codigo = ?', (codigo,)).fetchone():
+            raise HTTPException(404, 'No hay ninguna clase con ese código.')
+        if not c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', (codigo, alumno_id)).fetchone():
+            raise HTTPException(404, 'El alumno ya no está en esta clase.')
+        c.execute('DELETE FROM respuestas WHERE alumno = ? AND leccion_id IN (SELECT id FROM lecciones WHERE clase = ?)',
+                  (alumno_id, codigo))
+        c.execute('DELETE FROM matriculas WHERE clase = ? AND alumno = ?', (codigo, alumno_id))
+    return {'ok': True}
