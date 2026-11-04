@@ -314,5 +314,8 @@
  "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Supprimer la leçon « {titulo} » ? Les notes et les questions de tes élèves seront aussi supprimées. C'est définitif.",
  "Contenido": "Contenu",
  "Cantidad": "Quantité",
- "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "Si tu n'as ni photo ni fichier, écris ou colle ici le texte ou l'information."
+ "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "Si tu n'as ni photo ni fichier, écris ou colle ici le texte ou l'information.",
+ "Oculta": "Cachée",
+ "Mostrar a los alumnos": "Montrer aux élèves",
+ "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "Cette classe est cachée : tes élèves ne la voient pas et son code ne les laisse pas entrer. Pour la montrer, appuie sur ⋮ dans « Mes classes »."
 }

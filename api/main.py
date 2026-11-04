@@ -115,6 +115,9 @@ def preparar_bd():
             os.replace(DB_PATH, DB_PATH.replace(".db", f"-antigua-{datetime.now():%Y%m%d%H%M%S}.db"))
     with closing(db()) as c, c:
         c.executescript(TABLAS)
+        # Bases de datos que ya existían: la columna se añade sin tocar lo demás.
+        if "oculta" not in [fila[1] for fila in c.execute("PRAGMA table_info(clases)")]:
+            c.execute("ALTER TABLE clases ADD COLUMN oculta INTEGER NOT NULL DEFAULT 0")
 
 
 preparar_bd()
@@ -128,9 +131,10 @@ def normalizar_codigo(codigo: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", codigo.upper())
 
 
-def buscar_clase(c, codigo):
-    clase = c.execute("SELECT codigo, nombre FROM clases WHERE codigo = ?", (normalizar_codigo(codigo),)).fetchone()
-    if not clase:
+def buscar_clase(c, codigo, para_alumno=False):
+    clase = c.execute("SELECT codigo, nombre, oculta FROM clases WHERE codigo = ?", (normalizar_codigo(codigo),)).fetchone()
+    # Para un alumno, una clase oculta es como si no existiera: su código no le deja entrar.
+    if not clase or (para_alumno and clase["oculta"]):
         raise HTTPException(404, "No hay ninguna clase con ese código. Revisa que esté bien escrito.")
     return clase
 
@@ -577,7 +581,7 @@ def crear_clase(datos: NuevaClase, x_sesion_profe: str | None = Header(default=N
 
 def resumen_clases(c, profe: str | None = None):
     return [dict(f) for f in c.execute(f"""
-        SELECT c.codigo, c.nombre,
+        SELECT c.codigo, c.nombre, c.oculta,
                (SELECT COUNT(*) FROM matriculas m WHERE m.clase = c.codigo) AS alumnos,
                (SELECT COUNT(*) FROM lecciones l WHERE l.clase = c.codigo) AS lecciones
         FROM clases c {"WHERE c.codigo IN (SELECT clase FROM clases_profe WHERE profe = ?)" if profe else ""}
@@ -704,7 +708,7 @@ def crear_alumno(datos: NuevoAlumno):
         raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
     comprobar_contrasena(datos.contrasena)
     with closing(db()) as c, c:
-        clase = buscar_clase(c, datos.clase) if datos.clase and not datos.alumno_id else None  # un código mal escrito sigue dando error
+        clase = buscar_clase(c, datos.clase, para_alumno=True) if datos.clase and not datos.alumno_id else None  # un código mal escrito sigue dando error
         if c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (usuario,)).fetchone():
             libre = usuario_libre(c, usuario)
             raise HTTPException(409, {"mensaje": f"El usuario «{usuario}» ya existe. Prueba con «{libre}».", "sugerencia": libre})
@@ -781,7 +785,7 @@ class Unirse(BaseModel):
 def unirse(codigo: str, datos: Unirse):
     """Un alumno que ya tiene usuario entra en otra clase."""
     with closing(db()) as c, c:
-        clase = buscar_clase(c, codigo)
+        clase = buscar_clase(c, codigo, para_alumno=True)
         if not c.execute("SELECT 1 FROM cuentas_alumno WHERE alumno = ?", (datos.alumno_id,)).fetchone():
             # Solo pasa con la versión vieja de la app (la de entrar solo con el nombre), que siga abierta.
             raise HTTPException(404, "Hay una versión nueva de la app: ciérrala del todo y vuelve a abrirla.")
@@ -796,7 +800,7 @@ def clases_del_alumno(c, alumno_id: str):
     # Todo lo que el alumno necesita sin conexión: sus clases y las lecciones publicadas enteras.
     clases = c.execute("""
         SELECT c.codigo, c.nombre FROM matriculas m JOIN clases c ON c.codigo = m.clase
-        WHERE m.alumno = ? ORDER BY m.fecha
+        WHERE m.alumno = ? AND c.oculta = 0 ORDER BY m.fecha
     """, (alumno_id,)).fetchall()
     resultado = []
     for clase in clases:
@@ -1082,6 +1086,19 @@ def borrar_leccion(codigo: str, leccion_id: str):
     with closing(db()) as c, c:
         borrar_lecciones(c, "id", buscar_leccion(c, codigo, leccion_id)["id"])
     return {"ok": True}
+
+
+class Oculta(BaseModel):
+    oculta: bool
+
+
+@app.put("/api/clases/{codigo}/oculta", dependencies=SOLO_PROFE)
+def ocultar_o_mostrar_clase(codigo: str, datos: Oculta):
+    """Oculta: sale de los móviles en su próxima sincronización y su código no deja entrar. Las respuestas que el móvil
+    tuviera sin enviar se siguen guardando, y la clase vuelve entera al mostrarla."""
+    with closing(db()) as c, c:
+        c.execute("UPDATE clases SET oculta = ? WHERE codigo = ?", (int(datos.oculta), buscar_clase(c, codigo)["codigo"]))
+    return {"oculta": datos.oculta}
 
 
 @app.delete("/api/clases/{codigo}", dependencies=SOLO_PROFE)
