@@ -289,7 +289,7 @@ Escribe TODO en {idioma} (título, lectura, ejemplo, preguntas y respuestas), au
 Primero mira para qué curso es el TEXTO (primaria, ESO, bachillerato, FP o universidad): la lección es para alumnos de ese curso.
 NIVEL {nivel} de 0 a 5 (0 = lo más corto y sencillo, 5 = lo más extenso y técnico, siempre dentro de ese curso). {como}
 - "titulo": corto y claro.
-- "lectura_facil": la lección en sí, contada al NIVEL {nivel}: enseña tú el contenido, no digas «el texto explica» ni lo resumas desde fuera. Entre {min_palabras} y {max_palabras} palabras: no te quedes corto si el texto da para ello. Un párrafo para cada idea, separados con una línea en blanco. Usa solo información del texto: puedes explicar y desarrollar lo que dice, pero no añadas datos que no estén.
+- "lectura_facil": la lección en sí, contada al NIVEL {nivel}: enseña tú el contenido, no digas «el texto explica» ni lo resumas desde fuera. {largo} Un párrafo para cada idea, separados con una línea en blanco. Usa solo información del texto: puedes explicar y desarrollar lo que dice, pero no añadas datos que no estén.
 - "explicacion_ejemplo": explica la idea principal con un ejemplo de la vida diaria, o un caso práctico real si el tema es técnico. De {frases} frases. El ejemplo tiene que ser cierto y tener sentido.
 - "preguntas": {n_preguntas} preguntas {tipo}, todas distintas entre sí, que se puedan contestar con el texto. Para cada una:
   - "respuesta_correcta": la respuesta buena, corta, sacada del texto.
@@ -422,10 +422,10 @@ def juntar_opciones(leccion):
 
 def esquema_con_nivel(nivel):
     """El esquema de siempre, con más preguntas y textos más largos según el nivel."""
-    _, max_palabras, _, n, _ = NIVELES[nivel]
+    n = NIVELES[nivel][3]
     e = json.loads(json.dumps(ESQUEMA_LECCION))
-    e["properties"]["lectura_facil"]["maxLength"] = max(1600, max_palabras * 8)
-    e["properties"]["explicacion_ejemplo"]["maxLength"] = 700 if nivel < 3 else 1400
+    # Sin límite de largo en la lectura ni en el ejemplo: lo marca el nivel (en el prompt), no un corte.
+    del e["properties"]["lectura_facil"]["maxLength"], e["properties"]["explicacion_ejemplo"]["maxLength"]
     e["properties"]["preguntas"]["minItems"] = e["properties"]["preguntas"]["maxItems"] = n
     if nivel >= 3:  # en los niveles altos las respuestas técnicas son más largas (con 120 alguna salía cortada)
         p = e["properties"]["preguntas"]["items"]["properties"]
@@ -435,13 +435,14 @@ def esquema_con_nivel(nivel):
 
 def crear_leccion_con_ia(texto, idioma="es", nivel=1):
     min_palabras, max_palabras, frases, n_preguntas, como = NIVELES[nivel]
-    prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, min_palabras=min_palabras,
-                                   max_palabras=max_palabras, frases=frases, n_preguntas=n_preguntas, tipo=TIPO_PREGUNTAS[nivel])
-    # Unos 2 tokens por palabra en la lectura, más el ejemplo y unos 120 por pregunta.
-    max_tokens = 1200 + max_palabras * 2 + n_preguntas * 150
+    largo = (f"Unas {min_palabras} a {max_palabras} palabras." if nivel < 3 else
+             f"Como mínimo {min_palabras} palabras y sin máximo: extiéndete todo lo que dé de sí el texto.")
+    prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, largo=largo,
+                                   frases=frases, n_preguntas=n_preguntas, tipo=TIPO_PREGUNTAS[nivel])
     for _ in range(2):  # si sale mal, se intenta una vez más
-        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel), max_tokens=max_tokens, contexto=8192 if nivel < 3 else 16384,
-                                 espera=300 if nivel < 3 else 600)  # nivel 5 con un tema largo: unos 5 min en un Mac M3
+        # Sin tope de palabras (-2: hasta llenar el contexto, así no se queda colgada repitiendo) y sin prisa:
+        # un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
+        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel), max_tokens=-2, contexto=8192 if nivel < 3 else 16384, espera=1800)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:

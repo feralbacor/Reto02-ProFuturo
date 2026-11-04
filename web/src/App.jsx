@@ -122,6 +122,8 @@ const useCambiosProfe = () => useEnAparato(leerCambiosProfe)
 
 // Errores que se arreglan solos (sin red, IA apagada u ocupada): se vuelve a probar más tarde.
 const esPasajero = (e) => e.message === SIN_CONEXION || !e.estado || e.estado >= 500 || e.estado === 429
+// La IA ha contestado con un error (apagada, lenta o mal): se dice al momento, no se deja esperando en «Por preparar».
+const fallaLaIa = (e) => typeof e.detalle === 'string' && e.estado >= 502 && e.estado <= 504
 
 // Las fotos las lee la IA; los PDF, Word, PowerPoint… los abre la API y saca su texto.
 const esImagen = (datos) => datos.startsWith('data:image/')
@@ -162,16 +164,7 @@ async function prepararPendientesProfe() {
         guardarCambioProfe({ ...c, error: e.message })
       }
     }
-    for (const item of leerPendientesProfe().filter(p => !p.error)) {
-      try {
-        await prepararLeccion(item, cambiarPendienteProfe)
-        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
-      } catch (e) {
-        if (esPasajero(e)) break
-        const ahora = leerPendientesProfe().find(p => p.id === item.id)
-        if (ahora) cambiarPendienteProfe({ ...ahora, error: e.message }) // p. ej. una foto sin texto: lo arregla el profe
-      }
-    }
+    // Las lecciones «por preparar» ya no se preparan solas (sin cola de la IA): el profe pulsa «Preparar ahora».
   } finally {
     preparandoPendientes = false
   }
@@ -499,7 +492,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       {pendientes.length > 0 && (
         <section className="seccion">
           <h2 className="seccion-titulo">{t('Por preparar ({n})', { n: pendientes.length })}</h2>
-          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Se prepararán solas cuando haya conexión con el ordenador de la clase y su IA (Ollama) esté encendida. Después las revisas y las publicas.')}</p>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Cuando haya conexión con el ordenador de la clase, pulsa «Preparar ahora». Después las revisas y las publicas.')}</p>
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
@@ -507,7 +500,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || t('Sin texto todavía')}</p>
                 {p.error && <Aviso texto={t('No se ha podido preparar: {error}', { error: t(p.error) })} />}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
-                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Editar')}</button>
+                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Preparar ahora')}</button>
                   <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Quitar')}</button>
                 </div>
               </div>
@@ -673,7 +666,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
-      if (!esPasajero(e)) {
+      if (!esPasajero(e) || fallaLaIa(e)) {
         setTexto(item.texto) // lo que se haya leído de las fotos no se pierde
         setFotos(f => f.slice(f.length - item.fotos.length))
         setError(e.message)
@@ -688,9 +681,7 @@ function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
         setOcupado('')
         return
       }
-      window.alert(e.message === SIN_CONEXION
-        ? t('Sin conexión con el ordenador de la clase. La lección queda guardada y se preparará sola cuando vuelva la conexión.')
-        : `${t(e.message)} ${t('La lección queda guardada y se preparará sola cuando la IA esté lista.')}`)
+      window.alert(t('Sin conexión con el ordenador de la clase. La lección queda guardada en «Por preparar»: cuando vuelva la conexión, pulsa «Preparar ahora».'))
       onVolver()
     }
   }

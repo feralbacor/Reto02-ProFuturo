@@ -52,8 +52,8 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 **Lo que ve el profe**
 - Sus clases, cada clase y sus lecciones salen al momento, también sin conexión (la última copia descargada).
 - Sin conexión, «Preparar la lección» guarda el título, las fotos y el texto en el móvil. En la clase aparece «Por preparar (N)», con «Quitar».
-- Al volver la conexión (al abrir la app, con el evento `online` y cada 30 s) se leen las fotos, la IA prepara la lección y queda como **borrador** para revisarla y publicarla.
-- Si hay conexión pero la IA (Ollama) está apagada, pasa lo mismo, y el aviso dice que la IA está apagada en vez de «Sin conexión».
+- **Ya no se preparan solas** (sin cola de la IA): cuando vuelve la conexión, el profe pulsa «Preparar ahora» y después «Preparar la lección». Queda como **borrador** para revisarla y publicarla.
+- Si hay conexión pero la IA está apagada, tarda demasiado o falla, el error sale al momento y la lección no va a «Por preparar».
 
 **API**
 - `GET /api/clases/{codigo}` trae cada lección con su `contenido` entero (solo se añade un campo).
@@ -111,14 +111,15 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 
 **Lo que ve el profe**
 - En «Nueva lección», paso 5 **«El nivel»**: seis botones del 0 al 5 (por defecto, 2). Debajo dice qué es cada uno: 0 Lo esencial · 1 Básico · 2 Normal · 3 Completo · 4 Avanzado · 5 Experto. El idioma pasa a ser el paso 6.
-- Cuanto más alto, **más larga y más técnica**: la lectura va de 60–120 palabras (0) a 800–1200 (5), el ejemplo es un caso práctico real si el tema es técnico, y las preguntas pasan de 5 de recordar a 10 de razonar y aplicar.
+- Cuanto más alto, **más larga y más técnica**: la lectura va de unas 60–120 palabras (0) a **al menos 800 y sin máximo** (5; del 3 al 5 no hay máximo), el ejemplo es un caso práctico real si el tema es técnico, y las preguntas pasan de 5 de recordar a 10 de razonar y aplicar.
 - **El nivel va según el tema**: la IA mira primero para qué curso es el texto (primaria, ESO, bachillerato, FP o universidad) y el nivel sube o baja dentro de ese curso. Un 4 de 2.º de la ESO es más fácil que un 2 de 3.º de carrera.
 - Las lecciones «por preparar» guardan su nivel.
 
 **API (`api/main.py`)**
 - `POST /api/clases/{codigo}/lecciones` acepta `nivel` (0 a 5; si no llega, 1, como eran antes). Se guarda en `contenido.nivel`.
 - `NIVELES` y `TIPO_PREGUNTAS` dicen cómo es cada nivel. `esquema_con_nivel()` cambia el número de preguntas y el largo máximo.
-- Del nivel 3 al 5 se leen hasta 20 000 letras del texto (antes 8 000), y la IA puede tardar hasta 10 minutos.
+- Del nivel 3 al 5 se leen hasta 20 000 letras del texto (antes 8 000).
+- **Sin límite de palabras:** la lectura y el ejemplo no tienen largo máximo, y la IA escribe hasta acabar (`num_predict: -2`, como mucho hasta llenar el contexto, para que no se quede repitiendo sin fin). Se le espera hasta 30 min.
 
 **Probado con Qwen** (un tema de Arquitectura de Computadores de 3.º de carrera, PDF de 14 000 letras, Mac M3): nivel 1 en 45 s (115 palabras, 5 preguntas sencillas); nivel 5 en unos 5 min (419 palabras técnicas, 10 preguntas).
 
@@ -139,5 +140,5 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - La API necesita **Python 3.11** (`api/.venv`). Con el Python 3.9 de Xcode no arranca y la web se queda cargando.
 - **Librería nueva: `pypdf`**, solo para los PDF. En cada ordenador que arranque la API: `cd api && source .venv/bin/activate && pip install pypdf`. Sin ella, todo lo demás funciona y al subir un PDF sale «Para leer PDF falta pypdf…».
 - Para leer fotos y preparar lecciones hace falta **Ollama** encendido con `qwen3-vl:4b-instruct`.
-- **Niveles altos y túnel de Cloudflare:** el túnel corta las peticiones que tardan más de unos 100 s. Desde el móvil por el túnel, los niveles 4 y 5 pueden acabar en «Por preparar» y reintentarse. En el Mac (localhost) no pasa.
+- **Niveles altos y túnel de Cloudflare:** el túnel corta las peticiones que tardan más de unos 100 s. Desde el móvil por el túnel, los niveles altos dan error (la lección se sigue preparando en el ordenador y aparece al recargar la clase). En el Mac (localhost) no pasa.
 - Sin hacer: preparar lecciones o enviar cambios con la app cerrada y un tiempo máximo de espera si el servidor no contesta.

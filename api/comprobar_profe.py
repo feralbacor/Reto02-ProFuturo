@@ -122,5 +122,6 @@ assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None}, he
 assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "nivel": 6}, headers=sesion).status_code == 400
 assert main.esquema_con_nivel(5)["properties"]["preguntas"]["maxItems"] == 10 and main.ESQUEMA_LECCION["properties"]["preguntas"]["maxItems"] == 5
 for n in main.NIVELES:  # el prompt se puede rellenar en todos los niveles
-    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", min_palabras=1, max_palabras=2, frases="1", n_preguntas=5, tipo="")
+    assert f"NIVEL {n}" in main.PROMPT_LECCION.format(texto="t", idioma="español", nivel=n, como="", largo="", frases="1", n_preguntas=5, tipo="")
+assert "maxLength" not in main.esquema_con_nivel(0)["properties"]["lectura_facil"]
 print("Nivel de dificultad: todo bien")
