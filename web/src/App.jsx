@@ -195,7 +195,7 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={(m) => { setPorPreparar(null); setMateriaNueva(m); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={(m) => { setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
       onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
@@ -438,10 +438,6 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
     return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const nuevaMateria = () => {
-    const nombre = window.prompt(t('¿Cómo se llama la materia? Por ejemplo: Ciencias'))?.trim()
-    if (nombre) onNueva(nombre.slice(0, 40))
-  }
   const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
   const quitarPendiente = (p) => {
     if (window.confirm(t('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.'))) {
@@ -490,7 +486,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
       <Aviso texto={error} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
-        <button onClick={nuevaMateria} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva materia')}</button>
+        <button onClick={() => onNueva(clase.nombre)} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
         <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />{t('Ver notas')}</button>
       </div>
 
@@ -516,13 +512,10 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPend
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Lecciones')}</h2>
-        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva materia» y crea la primera lección.')}</p>}
+        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
         {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
           <div key={materia}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <h3 className="subtitulo">{t(materia)}</h3>
-              <button onClick={() => onNueva(materia)} className="boton boton-secundario boton-pequeno"><Icono nombre="mas" />{t('Nueva lección')}</button>
-            </div>
+            <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
               {lecciones.map(l => (
                 <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
