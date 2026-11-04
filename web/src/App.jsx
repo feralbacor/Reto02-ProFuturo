@@ -75,15 +75,35 @@ function guardarPendientesProfe(lista) {
 }
 const cambiarPendienteProfe = (item) => guardarPendientesProfe(leerPendientesProfe().map(p => p.id === item.id ? item : p))
 
-function usePendientesProfe() {
-  const [lista, setLista] = useState(leerPendientesProfe)
+// Cambios a lecciones ya preparadas (publicadas o borradores) hechos sin conexión: el último de cada una.
+const leerCambiosProfe = () => leer('profe-cambios', [])
+function guardarCambiosProfe(lista) {
+  guardar('profe-cambios', lista)
+  window.dispatchEvent(new Event('profe-pendientes'))
+  return JSON.stringify(leerCambiosProfe()) === JSON.stringify(lista) // false: no cabe en el aparato
+}
+const guardarCambioProfe = (cambio) => {
+  const antes = leerCambiosProfe().find(c => c.id === cambio.id)
+  return guardarCambiosProfe([...leerCambiosProfe().filter(c => c.id !== cambio.id), { ...cambio, publicar: cambio.publicar || !!antes?.publicar }])
+}
+
+// Lo mismo que comprueba la API (leccion_valida), para avisar ya sin conexión.
+const textoLleno = (t) => typeof t === 'string' && t.trim() !== ''
+const leccionValida = (l) => ['titulo', 'lectura_facil', 'explicacion_ejemplo'].every(k => textoLleno(l[k]))
+  && new Set(l.preguntas.map(p => p.pregunta.trim().toLowerCase())).size === l.preguntas.length
+  && l.preguntas.every(p => textoLleno(p.pregunta) && p.opciones.every(textoLleno) && new Set(p.opciones.map(o => o.trim().toLowerCase())).size === 4)
+
+function useEnAparato(leerLista) {
+  const [lista, setLista] = useState(leerLista)
   useEffect(() => {
-    const ver = () => setLista(leerPendientesProfe())
+    const ver = () => setLista(leerLista())
     window.addEventListener('profe-pendientes', ver)
     return () => window.removeEventListener('profe-pendientes', ver)
-  }, [])
+  }, [leerLista])
   return lista
 }
+const usePendientesProfe = () => useEnAparato(leerPendientesProfe)
+const useCambiosProfe = () => useEnAparato(leerCambiosProfe)
 
 // Errores que se arreglan solos (sin red, IA apagada u ocupada): se vuelve a probar más tarde.
 const esPasajero = (e) => e.message === SIN_CONEXION || !e.estado || e.estado >= 500 || e.estado === 429
@@ -116,6 +136,17 @@ async function prepararPendientesProfe() {
   if (preparandoPendientes) return
   preparandoPendientes = true
   try {
+    for (const c of leerCambiosProfe().filter(c => !c.error)) {
+      try {
+        await api(`/api/clases/${encodeURIComponent(c.codigo)}/lecciones/${c.id}`, { method: 'PUT', body: { leccion: c.leccion, publicar: c.publicar } })
+        // Solo se quita si el profe no lo ha vuelto a cambiar mientras se enviaba.
+        const ahora = leerCambiosProfe()
+        if (JSON.stringify(ahora.find(x => x.id === c.id)) === JSON.stringify(c)) guardarCambiosProfe(ahora.filter(x => x.id !== c.id))
+      } catch (e) {
+        if (esPasajero(e)) return
+        guardarCambioProfe({ ...c, error: e.message })
+      }
+    }
     for (const item of leerPendientesProfe().filter(p => !p.error)) {
       try {
         await prepararLeccion(item, cambiarPendienteProfe)
@@ -136,7 +167,8 @@ function VistaProfe({ onVolver }) {
   const [sesion, setSesion] = useState(() => leer('profe-sesion', null))
   const [pantalla, setPantalla] = useState('clases')
   const [codigo, setCodigo] = useState(null)
-  const [editando, setEditando] = useState(null) // { id, leccion, publicada }
+  const [editando, setEditando] = useState(null) // { id, leccion, publicada, cambio }
+  const [porPreparar, setPorPreparar] = useState(null) // la lección «por preparar» que se edita
   const salir = useCallback(() => {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
@@ -154,13 +186,14 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={() => setPantalla('nueva')} onNotas={() => setPantalla('notas')} onEditar={editar} />
+    return <ProfeClase codigo={codigo} onVolver={() => setPantalla('clases')} onNueva={() => { setPorPreparar(null); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+      onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
     return <PanelClase codigo={codigo} onVolver={() => setPantalla('clase')} />
   }
   if (pantalla === 'nueva') {
-    return <ProfeNuevaLeccion codigo={codigo} onVolver={() => setPantalla('clase')} onCreada={editar} />
+    return <ProfeNuevaLeccion codigo={codigo} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
   }
   if (pantalla === 'revisar' && editando) {
     return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={() => setPantalla('clase')} />
@@ -331,7 +364,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
-function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
+function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
   const [error, setError] = useState('')
   const [pidePin, setPidePin] = useState(false)
@@ -389,8 +422,14 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   }
 
   const pendientes = usePendientesProfe().filter(p => p.codigo === codigo)
+  // Los cambios sin enviar se ven ya, encima de lo que dice el ordenador de la clase.
+  const cambios = useCambiosProfe()
+  const conCambios = (l) => {
+    const c = cambios.find(x => x.id === l.id)
+    return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
+  }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada })
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
   const quitarPendiente = (p) => {
     if (window.confirm('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.')) {
       guardarPendientesProfe(leerPendientesProfe().filter(x => x.id !== p.id))
@@ -452,7 +491,10 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
                 <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto o archivo', 'fotos o archivos') : 'texto'}</p>
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || 'Sin texto todavía'}</p>
                 {p.error && <Aviso texto={`No se ha podido preparar: ${p.error}`} />}
-                <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Quitar</button>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
+                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">Editar</button>
+                  <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">Quitar</button>
+                </div>
               </div>
             ))}
           </div>
@@ -462,13 +504,14 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
       <section className="seccion">
         <h2 className="seccion-titulo">Lecciones</h2>
         {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.</p>}
-        {porMateria(clase.lecciones, l => l.materia).map(([materia, lecciones]) => (
+        {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
           <div key={materia}>
             <h3 className="subtitulo">{materia}</h3>
             <div className="lista">
               {lecciones.map(l => (
                 <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
                   <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                  {l.cambio && <span className="insignia">{l.cambio.error ? 'Error al guardar' : 'Sin enviar'}</span>}
                   <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? 'Publicada' : 'Borrador'}</span>
                   <Icono nombre="seguir" className="icono-final" />
                 </button>
@@ -520,10 +563,11 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   )
 }
 
-function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
+function ProfeNuevaLeccion({ codigo, inicial, onVolver, onCreada }) {
   const MAX_FOTOS = 5
-  const [fotos, setFotos] = useState([]) // { id, nombre, datos }
-  const [texto, setTexto] = useState('')
+  // inicial: una lección «por preparar» que se edita (con su id, para que no se duplique).
+  const [fotos, setFotos] = useState(() => (inicial?.fotos || []).map((datos, i) => ({ id: nuevoId(), nombre: inicial.nombres?.[i] || `Archivo ${i + 1}`, datos })))
+  const [texto, setTexto] = useState(inicial?.texto || '')
   const [leidas, setLeidas] = useState(false)
   const [ocupado, setOcupado] = useState('') // qué está haciendo
   const [leyendo, setLeyendo] = useState(false) // para enseñar la espera junto a las fotos o junto al botón final
@@ -531,8 +575,8 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const camara = useRef(null)
   const galeria = useRef(null)
   const documento = useRef(null)
-  const [materia, setMateria] = useState('')
-  const [titulo, setTitulo] = useState('')
+  const [materia, setMateria] = useState(inicial?.materia || '')
+  const [titulo, setTitulo] = useState(inicial?.titulo || '')
   const [materias, setMaterias] = useState([])
   const [ia, setIa] = useState(null)
 
@@ -593,9 +637,11 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const crear = async () => {
     setError('')
     setOcupado(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
-    let item = { id: nuevoId(), codigo, texto, materia, titulo, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
+    // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
+    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
+      if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
       if (!esPasajero(e)) {
@@ -606,8 +652,9 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
         return
       }
       // Sin conexión (o la IA apagada): se guarda en el aparato y se prepara sola más tarde.
-      if (!guardarPendientesProfe([...leerPendientesProfe(), item])) {
-        guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
+      const antes = leerPendientesProfe() // si se está editando, la nueva sustituye a la de antes
+      if (!guardarPendientesProfe([...antes.filter(p => p.id !== item.id), item])) {
+        guardarPendientesProfe(antes)
         setError('No cabe en este aparato. Quita alguna foto o escribe el texto.')
         setOcupado('')
         return
@@ -625,7 +672,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>La clase</Volver></header>
-      <h1 className="titulo">Nueva lección</h1>
+      <h1 className="titulo">{inicial ? 'Lección por preparar' : 'Nueva lección'}</h1>
       <p className="frase">Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.</p>
       {ia === 'apagada' && (
         <p className="aviso aviso-atencion"><strong>La lectura de fotos está apagada</strong>Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.</p>
@@ -703,7 +750,9 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   const [leccion, setLeccion] = useState(inicial.leccion)
   const [publicada, setPublicada] = useState(!!inicial.publicada)
   const [guardando, setGuardando] = useState(false)
-  const [aviso, setAviso] = useState({ texto: '', color: COLOR.verde })
+  const [aviso, setAviso] = useState(() => !inicial.cambio ? { texto: '', color: COLOR.verde }
+    : inicial.cambio.error ? { texto: `No se han podido guardar tus cambios: ${inicial.cambio.error}`, color: COLOR.rojo }
+      : { texto: 'Tienes cambios guardados en este aparato que se enviarán al volver la conexión.', color: COLOR.verde })
 
   const cambiar = (clave, valor) => setLeccion(l => ({ ...l, [clave]: valor }))
   const cambiarPregunta = (i, cambios) => setLeccion(l => ({
@@ -719,13 +768,20 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     try {
       const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
+      // Un cambio viejo de esta lección que esperaba en el aparato ya no vale: lo de ahora es lo último.
+      if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
       if (publicar) setPublicada(true)
       setAviso({
         texto: publicar ? 'Publicada. Tus alumnos la tendrán la próxima vez que se conecten.' : 'Guardado.',
         color: COLOR.verde,
       })
     } catch (e) {
-      setAviso({ texto: e.message, color: COLOR.rojo })
+      // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
+      if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
+      if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
+      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      if (publicar) setPublicada(true)
+      setAviso({ texto: 'Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.', color: COLOR.verde })
     } finally {
       setGuardando(false)
     }
