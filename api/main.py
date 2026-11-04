@@ -403,7 +403,8 @@ class NuevoAlumno(BaseModel):
     nombre: str
     usuario: str
     contrasena: str
-    clase: str  # sin el código de una clase no se puede crear un usuario
+    clase: str | None = None  # sin el código de una clase no se puede crear un usuario...
+    alumno_id: str | None = None  # ...salvo un alumno de antes (entró solo con su nombre), que conserva sus clases
 
 
 @app.post("/api/alumnos")
@@ -416,14 +417,22 @@ def crear_alumno(datos: NuevoAlumno):
         raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
     comprobar_contrasena(datos.contrasena)
     with closing(db()) as c, c:
-        clase = buscar_clase(c, datos.clase)
+        clase = None if datos.alumno_id else buscar_clase(c, datos.clase or "")
         if c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (usuario,)).fetchone():
             libre = usuario_libre(c, usuario)
             raise HTTPException(409, {"mensaje": f"El usuario «{usuario}» ya existe. Prueba con «{libre}».", "sugerencia": libre})
-        alumno_id = str(uuid.uuid4())
-        c.execute("INSERT INTO alumnos (id, nombre) VALUES (?, ?)", (alumno_id, nombre))
+        if datos.alumno_id:
+            if not c.execute("SELECT 1 FROM alumnos WHERE id = ?", (datos.alumno_id,)).fetchone():
+                raise HTTPException(404, "No te encuentro en el ordenador de la clase. Crea un usuario nuevo con el código de tu clase.")
+            if c.execute("SELECT 1 FROM cuentas_alumno WHERE alumno = ?", (datos.alumno_id,)).fetchone():
+                raise HTTPException(409, "Ya tienes usuario: entra con «Ya tengo usuario».")
+            alumno_id = datos.alumno_id
+            c.execute("UPDATE alumnos SET nombre = ? WHERE id = ?", (nombre, alumno_id))
+        else:
+            alumno_id = str(uuid.uuid4())
+            c.execute("INSERT INTO alumnos (id, nombre) VALUES (?, ?)", (alumno_id, nombre))
+            c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
         guardar_contrasena(c, alumno_id, datos.contrasena, usuario)
-        c.execute("INSERT INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)", (clase["codigo"], alumno_id, ahora()))
     return {"id": alumno_id, "usuario": usuario, "nombre": nombre}
 
 
@@ -472,7 +481,8 @@ def unirse(codigo: str, datos: Unirse):
     with closing(db()) as c, c:
         clase = buscar_clase(c, codigo)
         if not c.execute("SELECT 1 FROM cuentas_alumno WHERE alumno = ?", (datos.alumno_id,)).fetchone():
-            raise HTTPException(404, "Primero crea tu usuario.")
+            # Solo pasa con la versión vieja de la app (la de entrar solo con el nombre), que siga abierta.
+            raise HTTPException(404, "Hay una versión nueva de la app: ciérrala del todo y vuelve a abrirla.")
         c.execute(
             "INSERT OR IGNORE INTO matriculas (clase, alumno, fecha) VALUES (?, ?, ?)",
             (clase["codigo"], datos.alumno_id, ahora()),

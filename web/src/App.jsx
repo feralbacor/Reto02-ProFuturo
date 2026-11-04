@@ -17,6 +17,9 @@ const campoPin = { ...campo, fontSize: '26px', letterSpacing: '8px', fontFamily:
 const pinValido = (pin) => /^\d{4,8}$/.test(pin)
 import PanelClase from './Panel.jsx'
 
+// Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
+if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+
 // ---------- Inicio ----------
 function App() {
   const [vista, setVista] = useState('inicio')
@@ -577,15 +580,26 @@ function VistaAlumno({ onVolver }) {
   return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={() => setAlumno(null)} />
 }
 
+// Alumno de antes de los usuarios (entraba solo con su nombre) que sigue en este aparato.
+const LEGADO = ['alumno-perfil', 'alumno-clases', 'alumno-version', 'alumno-actualizado']
+
 function AlumnoQuienEres({ onEntrar, onVolver }) {
-  const [vista, setVista] = useState(null) // null | 'nuevo' | 'usuario' | un perfil
+  const [vista, setVista] = useState(null) // null | 'nuevo' | 'antiguo' | 'usuario' | un perfil
   const perfiles = leer('perfiles', [])
-  if (vista === 'nuevo') return <AlumnoNuevo onEntrar={onEntrar} onVolver={() => setVista(null)} />
+  const antiguo = leer('alumno-perfil', null)
+  if (vista === 'nuevo' || vista === 'antiguo') return <AlumnoNuevo antiguo={vista === 'antiguo' ? antiguo : null} onEntrar={onEntrar} onVolver={() => setVista(null)} />
   if (vista) return <AlumnoContrasena perfil={vista === 'usuario' ? null : vista} onEntrar={onEntrar} onVolver={() => setVista(null)} />
   return (
     <div style={pagina}>
       <button onClick={onVolver} style={botonVolver}>Volver</button>
       <h1 style={titulo}>¿Quién eres?</h1>
+      {antiguo?.nombre && (
+        <button onClick={() => setVista('antiguo')}
+          style={{ ...tarjeta, width: '100%', borderColor: '#ca8a04', backgroundColor: '#fefce8', display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'left', cursor: 'pointer', fontSize: '22px', fontWeight: 'bold', marginBottom: '12px' }}>
+          <Avatar nombre={antiguo.nombre} />
+          <span>{antiguo.nombre}<span style={{ display: 'block', fontSize: '17px', fontWeight: 'normal', color: '#854d0e' }}>Ponle usuario y contraseña para seguir</span></span>
+        </button>
+      )}
       {perfiles.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
           {perfiles.map(p => (
@@ -654,8 +668,8 @@ function AlumnoContrasena({ perfil, onEntrar, onVolver }) {
   )
 }
 
-function AlumnoNuevo({ onEntrar, onVolver }) {
-  const [nombre, setNombre] = useState('')
+function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
+  const [nombre, setNombre] = useState(antiguo?.nombre || '')
   const [usuario, setUsuario] = useState(null) // null: se saca del nombre hasta que lo cambie él
   const [contrasena, setContrasena] = useState('')
   const [codigo, setCodigo] = useState('')
@@ -669,8 +683,14 @@ function AlumnoNuevo({ onEntrar, onVolver }) {
     setError('')
     setEnviando(true)
     try {
-      const a = await api('/api/alumnos', { method: 'POST', body: { nombre, usuario: elUsuario, contrasena, clase: codigoLimpio } })
+      const a = await api('/api/alumnos', { method: 'POST', body: antiguo
+        ? { nombre, usuario: elUsuario, contrasena, alumno_id: antiguo.id }
+        : { nombre, usuario: elUsuario, contrasena, clase: codigoLimpio } })
       await recordarEnAparato(a, contrasena)
+      if (antiguo) {
+        guardar(`clases:${a.id}`, leer('alumno-clases', [])) // sus lecciones siguen en el aparato sin conexión
+        try { LEGADO.forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
+      }
       onEntrar(a)
     } catch (e) {
       if (e.detalle?.sugerencia) setUsuario(e.detalle.sugerencia)
@@ -682,7 +702,8 @@ function AlumnoNuevo({ onEntrar, onVolver }) {
   return (
     <div style={pagina}>
       <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>Crear mi usuario</h1>
+      <h1 style={titulo}>{antiguo ? 'Ponle usuario y contraseña' : 'Crear mi usuario'}</h1>
+      {antiguo && <p style={{ ...pista, marginTop: 0 }}>Antes se entraba solo con el nombre. Ahora cada alumno tiene usuario y contraseña, para que nadie entre como tú. Conservas tus clases y tus respuestas.</p>}
       <form onSubmit={crear} style={tarjeta}>
         <label htmlFor="nuevo-nombre" style={etiqueta}>¿Cómo te llamas?</label>
         <input id="nuevo-nombre" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off"
@@ -694,14 +715,16 @@ function AlumnoNuevo({ onEntrar, onVolver }) {
         <label htmlFor="nuevo-contrasena" style={etiqueta}>Tu contraseña</label>
         <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
         <p style={pista}>Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.</p>
-        <label htmlFor="nuevo-codigo" style={etiqueta}>Código de la clase</label>
-        <input id="nuevo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
-          autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
-          style={{ ...campoCodigo, marginBottom: '20px' }} />
+        {!antiguo && <>
+          <label htmlFor="nuevo-codigo" style={etiqueta}>Código de la clase</label>
+          <input id="nuevo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
+            autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
+            style={{ ...campoCodigo, marginBottom: '20px' }} />
+        </>}
         <Aviso texto={error} />
-        <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || codigoLimpio.length !== 6}
+        <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || (!antiguo && codigoLimpio.length !== 6)}
           style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
-          {enviando ? 'Creando…' : 'Crear y entrar'}
+          {enviando ? 'Guardando…' : antiguo ? 'Guardar y entrar' : 'Crear y entrar'}
         </button>
       </form>
     </div>
