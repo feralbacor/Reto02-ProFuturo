@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import '@fontsource-variable/archivo/wght.css'
+import './estilo.css'
 import {
-  COLOR, pagina, boton, botonVolver, campo, tarjeta, etiqueta, titulo, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, tomarDelSegundoPlano, hashLocal,
+  COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
+import PanelClase from './Panel.jsx'
+
+// Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
+if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
 
 // Agrupa una lista de lecciones por materia, en el orden en que aparece cada materia.
 const porMateria = (lecciones, materiaDe) => {
@@ -13,36 +19,45 @@ const porMateria = (lecciones, materiaDe) => {
   return [...grupos]
 }
 
-const campoPin = { ...campo, fontSize: '26px', letterSpacing: '8px', fontFamily: 'ui-monospace, Menlo, monospace' }
 const pinValido = (pin) => /^\d{4,8}$/.test(pin)
-import PanelClase from './Panel.jsx'
-import Tutor from './Tutor.jsx'
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 
-// Si sale una versión nueva, su service worker toma el control: se recarga una vez para no seguir con la vieja.
-if (navigator.serviceWorker?.controller) navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+function Volver({ onClick, disabled, children = 'Volver' }) {
+  return <button className="boton boton-fantasma volver" onClick={onClick} disabled={disabled}><Icono nombre="volver" />{children}</button>
+}
 
 // ---------- Inicio ----------
 function App() {
   const [vista, setVista] = useState('inicio')
-  const [salud, setSalud] = useState(null)
+  const [conectado, setConectado] = useState(null)
 
   useEffect(() => {
-    api('/api/salud').then(setSalud).catch(() => setSalud({ estado: 'sin conexión' }))
+    api('/api/salud').then(() => setConectado(true)).catch(() => setConectado(false))
   }, [vista])
 
   if (vista === 'profe') return <VistaProfe onVolver={() => setVista('inicio')} />
   if (vista === 'alumno') return <VistaAlumno onVolver={() => setVista('inicio')} />
 
-  const estadoIA = { lista: 'IA lista en este ordenador', gpu: 'IA lista en la GPU', apagada: 'la IA está apagada (abre Ollama)' }
   return (
-    <div style={{ ...pagina, minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <h1 style={{ fontSize: '48px', textAlign: 'center', marginBottom: '50px' }}>Mochila</h1>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '420px', margin: '0 auto' }}>
-        <button onClick={() => setVista('profe')} style={boton(COLOR.azul, { fontSize: '28px', padding: '28px' })}>Soy profe</button>
-        <button onClick={() => setVista('alumno')} style={boton(COLOR.verde, { fontSize: '28px', padding: '28px' })}>Soy alumno</button>
+    <div className="pagina">
+      <header className="cabecera"><span className="marca">Mochila</span></header>
+      <h1 className="titulo" style={{ marginTop: 20 }}>Aprende aunque <mark>no haya conexión</mark>.</h1>
+      <p className="frase">Las lecciones se quedan guardadas en el móvil. Tus respuestas le llegan a tu profe cuando vuelve la red.</p>
+
+      <div className="botones" style={{ marginTop: 32 }}>
+        <button className="eleccion eleccion-principal" onClick={() => setVista('alumno')}>
+          <span><span className="eleccion-titulo">Soy estudiante</span><span className="eleccion-detalle">Mis lecciones y mis preguntas</span></span>
+          <Icono nombre="seguir" tam={30} className="icono-final" />
+        </button>
+        <button className="eleccion" onClick={() => setVista('profe')}>
+          <span><span className="eleccion-titulo">Soy profe</span><span className="eleccion-detalle">Crear clases y lecciones</span></span>
+          <Icono nombre="seguir" tam={30} className="icono-final" />
+        </button>
       </div>
-      <p style={{ marginTop: '50px', textAlign: 'center', color: COLOR.suave }}>
-        {!salud ? 'Conectando…' : salud.estado === 'ok' ? `Conectado · ${estadoIA[salud.ia] || salud.ia}` : 'Sin conexión: puedes usar lo que ya tienes descargado'}
+
+      <p className="nota" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 28 }}>
+        <span className="punto" style={{ background: conectado ? COLOR.verde : conectado === false ? COLOR.suave : COLOR.amarillo }} />
+        {conectado === null ? 'Buscando el ordenador de la clase…' : conectado ? 'Conectado con el ordenador de la clase' : 'Sin conexión: puedes usar lo que ya está descargado'}
       </p>
     </div>
   )
@@ -97,35 +112,50 @@ function ProfeClases({ onAbrir, onVolver }) {
     }
   }
 
+  const hay = clases?.length > 0
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>Mis clases</h1>
-
-      <form onSubmit={crear} style={{ ...tarjeta, marginBottom: '30px' }}>
-        <label htmlFor="nombre-clase" style={etiqueta}>Crear una clase nueva</label>
-        <input id="nombre-clase" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60}
-          placeholder="Por ejemplo: 5.º A · Ciencias" style={{ ...campo, marginBottom: '16px' }} />
-        <label htmlFor="pin-clase" style={{ ...etiqueta, fontSize: '18px' }}>Tu PIN de profe para esta clase (4 a 8 números)</label>
-        <input id="pin-clase" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={pin}
-          onChange={e => setPin(e.target.value.replace(/\D/g, ''))} style={{ ...campoPin, marginBottom: '8px' }} />
-        <p style={{ color: COLOR.suave, marginBottom: '14px', fontSize: '17px' }}>Apúntalo: solo tú podrás abrir la clase y crear lecciones. En otro móvil o tablet te lo pedirá.</p>
-        <button type="submit" disabled={!nombre.trim() || !pinValido(pin) || creando} style={boton(COLOR.azul, { width: '100%' })}>
-          {creando ? 'Creando…' : 'Crear clase'}
-        </button>
-      </form>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} /></header>
+      <h1 className="titulo">Mis clases</h1>
+      <p className="frase">Cada clase tiene un código. Tus alumnos lo escriben para entrar.</p>
 
       <Aviso texto={error} />
-      {clases === null && <Cargando texto="Cargando clases…" />}
-      {clases?.length === 0 && !error && <p style={{ color: COLOR.suave }}>Todavía no tienes clases. Crea la primera arriba.</p>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {clases?.map(c => (
-          <button key={c.codigo} onClick={() => onAbrir(c.codigo)} style={{ ...tarjeta, textAlign: 'left', cursor: 'pointer', fontSize: '18px' }}>
-            <strong style={{ fontSize: '24px', display: 'block', marginBottom: '6px' }}>{c.nombre}</strong>
-            Código {c.codigo} · {c.alumnos} {c.alumnos === 1 ? 'alumno' : 'alumnos'} · {c.lecciones} {c.lecciones === 1 ? 'lección' : 'lecciones'}
+      {clases === null && <Cargando texto="Cargando tus clases…" />}
+      {hay && (
+        <div className="lista" style={{ marginTop: 24 }}>
+          {clases.map(c => (
+            <button key={c.codigo} className="fila" onClick={() => onAbrir(c.codigo)}>
+              <span className="fila-texto">
+                <span className="fila-titulo">{c.nombre}</span>
+                <span className="fila-detalle">
+                  <span className="insignia" style={{ fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>{c.codigo}</span>
+                  {plural(c.alumnos, 'alumno', 'alumnos')} · {plural(c.lecciones, 'lección', 'lecciones')}
+                </span>
+              </span>
+              <Icono nombre="seguir" className="icono-final" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <section className="seccion">
+        <h2 className="seccion-titulo">{hay ? 'Crear otra clase' : 'Crea tu primera clase'}</h2>
+        <form onSubmit={crear} className="tarjeta formulario">
+          <div className="campo-grupo">
+            <label htmlFor="nombre-clase" className="etiqueta">Nombre de la clase</label>
+            <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder="Por ejemplo: 5.º A · Ciencias" />
+          </div>
+          <div className="campo-grupo">
+            <label htmlFor="pin-clase" className="etiqueta">Tu PIN de profe</label>
+            <input id="pin-clase" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="new-password" maxLength={8}
+              value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+            <p className="pista">De 4 a 8 números. Apúntalo: en otro móvil o tablet te lo pedirá para abrir la clase.</p>
+          </div>
+          <button type="submit" disabled={!nombre.trim() || !pinValido(pin) || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
+            {creando ? 'Creando…' : 'Crear la clase'}
           </button>
-        ))}
-      </div>
+        </form>
+      </section>
     </div>
   )
 }
@@ -136,6 +166,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
   const [abriendo, setAbriendo] = useState(false)
   const [pidePin, setPidePin] = useState(false)
   const [pin, setPin] = useState('')
+  const [intentado, setIntentado] = useState(false)
 
   const cargar = useCallback(() => {
     api(`/api/clases/${encodeURIComponent(codigo)}`)
@@ -160,6 +191,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
     ev.preventDefault()
     guardarPin(codigo, pin)
     setPin('')
+    setIntentado(true)
     cargar()
   }
 
@@ -170,6 +202,17 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
     try {
       await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${a.id}/contrasena`, { method: 'PUT', body: { contrasena: nueva } })
       window.alert(`Listo. Dile a ${a.nombre} su usuario («${a.usuario}») y su nueva contraseña. La primera vez tendrá que entrar con conexión.`)
+    } catch (e) {
+      window.alert(e.message)
+    }
+  }
+
+  const cambiarRespuesta = async (d) => {
+    const nueva = window.prompt(`Tu respuesta a «${d.pregunta}»:`, d.respuesta || '')
+    if (!nueva?.trim()) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/dudas/${d.id}`, { method: 'PUT', body: { respuesta: nueva } })
+      cargar()
     } catch (e) {
       window.alert(e.message)
     }
@@ -188,15 +231,18 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
 
   if (pidePin) {
     return (
-      <div style={pagina}>
-        <button onClick={onVolver} style={botonVolver}>Volver</button>
-        <h1 style={titulo}>Clase {codigo}</h1>
-        <form onSubmit={entrarConPin} style={tarjeta}>
-          <label htmlFor="pin-entrar" style={etiqueta}>Escribe tu PIN de profe</label>
-          <input id="pin-entrar" type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} autoFocus
-            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} style={{ ...campoPin, marginBottom: '14px' }} />
-          <Aviso texto={error} />
-          <button type="submit" disabled={!pinValido(pin)} style={boton(COLOR.azul, { width: '100%' })}>Entrar</button>
+      <div className="pagina">
+        <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
+        <h1 className="titulo">Abrir la clase</h1>
+        <p className="frase">Escribe tu PIN de profe de la clase <strong style={{ fontFamily: 'var(--mono)' }}>{codigo}</strong>.</p>
+        <form onSubmit={entrarConPin} className="formulario" style={{ marginTop: 24 }}>
+          <div className="campo-grupo">
+            <label htmlFor="pin-entrar" className="etiqueta">PIN</label>
+            <input id="pin-entrar" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="current-password" maxLength={8} autoFocus
+              value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+          </div>
+          <Aviso texto={intentado ? error : ''} />
+          <button type="submit" disabled={!pinValido(pin)} className="boton boton-principal boton-ancho boton-grande">Abrir la clase</button>
         </form>
       </div>
     )
@@ -204,62 +250,87 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
 
   if (!clase) {
     return (
-      <div style={pagina}>
-        <button onClick={onVolver} style={botonVolver}>Volver</button>
+      <div className="pagina">
+        <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
         {error ? <Aviso texto={error} /> : <Cargando texto="Cargando la clase…" />}
       </div>
     )
   }
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Mis clases</button>
-      <h1 style={titulo}>{clase.nombre}</h1>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver}>Mis clases</Volver></header>
+      <h1 className="titulo">{clase.nombre}</h1>
 
-      <div style={{ ...tarjeta, textAlign: 'center', marginBottom: '24px', borderColor: COLOR.azul }}>
-        <p style={{ fontSize: '19px' }}>Código para que entren los alumnos:</p>
-        <p style={{ fontSize: '46px', fontWeight: 'bold', letterSpacing: '6px', fontFamily: 'ui-monospace, Menlo, monospace', color: COLOR.azul }}>{clase.codigo}</p>
+      <div className="codigo-clase" style={{ marginTop: 20 }}>
+        <span className="nota" style={{ margin: 0 }}>Código para que entren tus alumnos</span>
+        <span className="codigo-clase-texto">{clase.codigo}</span>
       </div>
 
       <Aviso texto={error} />
 
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '28px' }}>
-        <button onClick={onNueva} style={boton(COLOR.verde, { flex: '1 1 200px', fontSize: '22px' })}>+ Nueva lección</button>
-        <button onClick={onNotas} style={boton(COLOR.azul, { flex: '1 1 200px', fontSize: '22px' })}>Ver notas</button>
+      <div className="botones-fila" style={{ marginTop: 20 }}>
+        <button onClick={onNueva} className="boton boton-principal boton-grande"><Icono nombre="mas" />Nueva lección</button>
+        <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />Ver notas</button>
       </div>
 
-      <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>Lecciones</h2>
-      {clase.lecciones.length === 0 && <p style={{ color: COLOR.suave, marginBottom: '24px' }}>Todavía no hay lecciones. Haz una foto a una página del libro para crear la primera.</p>}
-      {porMateria(clase.lecciones, l => l.materia).map(([materia, lecciones]) => (
-        <section key={materia} style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '20px', color: COLOR.gris, marginBottom: '10px' }}>{materia}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {lecciones.map(l => (
-              <button key={l.id} disabled={abriendo} onClick={() => abrirLeccion(l.id)}
-                style={{ ...tarjeta, textAlign: 'left', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                <span>{l.titulo}</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', whiteSpace: 'nowrap', padding: '6px 10px', borderRadius: '8px', color: 'white', backgroundColor: l.publicada ? COLOR.verde : COLOR.suave }}>
-                  {l.publicada ? 'Publicada' : 'Borrador'}
-                </span>
-              </button>
-            ))}
+      <section className="seccion">
+        <h2 className="seccion-titulo">Lecciones</h2>
+        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.</p>}
+        {porMateria(clase.lecciones, l => l.materia).map(([materia, lecciones]) => (
+          <div key={materia}>
+            <h3 className="subtitulo">{materia}</h3>
+            <div className="lista">
+              {lecciones.map(l => (
+                <button key={l.id} disabled={abriendo} onClick={() => abrirLeccion(l.id)} className="fila">
+                  <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                  <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? 'Publicada' : 'Borrador'}</span>
+                  <Icono nombre="seguir" className="icono-final" />
+                </button>
+              ))}
+            </div>
           </div>
-        </section>
-      ))}
+        ))}
+      </section>
 
-      <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>Alumnos ({clase.alumnos.length})</h2>
-      {clase.alumnos.length === 0
-        ? <p style={{ color: COLOR.suave }}>Todavía no ha entrado nadie. Diles el código de arriba.</p>
-        : (
-          <ul style={{ ...tarjeta, listStyle: 'none', fontSize: '20px', padding: '6px 18px' }}>
-            {clase.alumnos.map(a => (
-              <li key={a.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '10px 0', borderBottom: `1px solid ${COLOR.borde}` }}>
-                <span>{a.nombre}{a.usuario && <span style={{ display: 'block', fontSize: '17px', color: COLOR.suave }}>Usuario: {a.usuario}</span>}</span>
-                {a.usuario && <button onClick={() => nuevaContrasena(a)} style={boton(COLOR.gris, { fontSize: '16px', minHeight: '44px', padding: '8px 14px' })}>Nueva contraseña</button>}
-              </li>
-            ))}
-          </ul>
-        )}
+      {clase.dudas?.length > 0 && (
+        <section className="seccion">
+          <h2 className="seccion-titulo">Dudas de tus alumnos</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>Las contesta Mochila con lo que dice la lección. Si una respuesta no te convence, cámbiala: le llegará al alumno.</p>
+          {clase.dudas.map(d => (
+            <div key={d.id} className="tarjeta duda">
+              <p className="nota" style={{ marginTop: 0, marginBottom: 6 }}>{d.alumno} · {d.leccion} · {cuando(d.fecha)}</p>
+              <p className="duda-pregunta">{d.pregunta}</p>
+              {d.respuesta
+                ? <p className="duda-respuesta">{d.respuesta}</p>
+                : <p className="nota">Mochila todavía no la ha contestado.</p>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+                {d.corregida ? <span className="insignia insignia-verde">Contestada por ti</span> : null}
+                <button onClick={() => cambiarRespuesta(d)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Cambiar la respuesta</button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section className="seccion">
+        <h2 className="seccion-titulo">Alumnos ({clase.alumnos.length})</h2>
+        {clase.alumnos.length === 0
+          ? <p className="frase" style={{ marginTop: 0 }}>Todavía no ha entrado nadie. Diles el código de arriba.</p>
+          : (
+            <div className="tarjeta" style={{ padding: '2px 16px' }}>
+              {clase.alumnos.map(a => (
+                <div key={a.id} className="alumno-fila">
+                  <span>
+                    <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
+                    {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>Usuario: {a.usuario}</span>}
+                  </span>
+                  {a.usuario && <button onClick={() => nuevaContrasena(a)} className="boton boton-secundario boton-pequeno">Nueva contraseña</button>}
+                </div>
+              ))}
+            </div>
+          )}
+      </section>
     </div>
   )
 }
@@ -269,18 +340,21 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const [fotos, setFotos] = useState([]) // { id, nombre, datos }
   const [texto, setTexto] = useState('')
   const [leidas, setLeidas] = useState(false)
-  const [ocupado, setOcupado] = useState('')
+  const [ocupado, setOcupado] = useState('') // qué está haciendo
+  const [leyendo, setLeyendo] = useState(false) // para enseñar la espera junto a las fotos o junto al botón final
   const [error, setError] = useState('')
   const camara = useRef(null)
   const galeria = useRef(null)
   const [materia, setMateria] = useState('')
   const [materias, setMaterias] = useState([])
+  const [ia, setIa] = useState(null)
 
   useEffect(() => {
     // Sugiere las materias que ya tiene la clase y deja puesta la última usada.
     api(`/api/clases/${encodeURIComponent(codigo)}`)
       .then(c => { setMaterias(c.materias); setMateria(m => m || c.materias[0] || '') })
       .catch(() => {})
+    api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
   }, [codigo])
 
   const anadir = async (archivos) => {
@@ -302,6 +376,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
 
   const leerFotos = async () => {
     setError('')
+    setLeyendo(true)
     const lista = fotos
     try {
       for (let i = 0; i < lista.length; i++) {
@@ -315,6 +390,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       setError(e.message)
     } finally {
       setOcupado('')
+      setLeyendo(false)
     }
   }
 
@@ -331,53 +407,67 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   }
 
   const suficiente = texto.trim().length >= 40
+  const espera = ocupado && <Cargando texto={ocupado} />
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} disabled={!!ocupado} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>Nueva lección</h1>
-
-      <label htmlFor="materia" style={etiqueta}>Materia</label>
-      <input id="materia" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
-        placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} style={{ ...campo, marginBottom: '24px' }} />
-      <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
-
-      <p style={{ fontSize: '20px', marginBottom: '16px' }}>Haz una foto a la página del libro, o elige fotos que ya tengas (hasta {MAX_FOTOS}).</p>
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} style={boton(COLOR.azul, { flex: '1 1 200px' })}>📷 Hacer foto</button>
-        <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} style={boton(COLOR.azul, { flex: '1 1 200px' })}>🖼️ Elegir fotos</button>
-      </div>
-      <input ref={camara} type="file" accept="image/*" capture="environment" onChange={alElegir} hidden />
-      <input ref={galeria} type="file" accept="image/*" multiple onChange={alElegir} hidden />
-
-      {fotos.length > 0 && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-            {fotos.map((f, i) => (
-              <div key={f.id} style={{ ...tarjeta, padding: '8px', textAlign: 'center' }}>
-                <img src={f.datos} alt={`Foto ${i + 1}`} style={{ width: '100%', height: '160px', objectFit: 'cover', borderRadius: '8px' }} />
-                <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado}
-                  style={boton(COLOR.gris, { width: '100%', fontSize: '16px', minHeight: '48px', marginTop: '8px', padding: '8px' })}>Quitar</button>
-              </div>
-            ))}
-          </div>
-          <button onClick={leerFotos} disabled={!!ocupado} style={boton(COLOR.verde, { width: '100%', marginBottom: '24px' })}>
-            Leer {fotos.length === 1 ? 'la foto' : `las ${fotos.length} fotos`}
-          </button>
-        </>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>La clase</Volver></header>
+      <h1 className="titulo">Nueva lección</h1>
+      <p className="frase">Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.</p>
+      {ia === 'apagada' && (
+        <p className="aviso aviso-atencion"><strong>La lectura de fotos está apagada</strong>Enciende Ollama en el ordenador de la clase. Mientras, puedes escribir o pegar el texto.</p>
       )}
 
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">1</span>Las fotos de la página</h2>
+        <div className="botones-fila">
+          <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />Hacer una foto</button>
+          <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />Elegir fotos</button>
+        </div>
+        <p className="pista">Hasta {MAX_FOTOS} fotos. Que se vea la página entera y con buena luz.</p>
+        <input ref={camara} type="file" accept="image/*" capture="environment" onChange={alElegir} hidden />
+        <input ref={galeria} type="file" accept="image/*" multiple onChange={alElegir} hidden />
+
+        {fotos.length > 0 && (
+          <>
+            <div className="fotos" style={{ marginTop: 16 }}>
+              {fotos.map((f, i) => (
+                <div key={f.id} className="tarjeta foto">
+                  <img src={f.datos} alt={`Foto ${i + 1}`} />
+                  <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado} className="boton boton-fantasma boton-ancho">Quitar</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={leerFotos} disabled={!!ocupado} className="boton boton-principal boton-ancho" style={{ marginTop: 16 }}>
+              Leer {fotos.length === 1 ? 'la foto' : `las ${fotos.length} fotos`}
+            </button>
+          </>
+        )}
+        {leyendo && espera}
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{leidas ? 'Revisa el texto' : 'El texto'}</h2>
+        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
+          {leidas ? 'Esto es lo que pone en las fotos. Corrige lo que haga falta.' : 'Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.'}
+        </label>
+        <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
+          placeholder="El texto de la página del libro…" />
+        {!suficiente && texto.trim() && <p className="pista">Hace falta un poco más de texto: al menos un par de frases.</p>}
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">3</span>La materia</h2>
+        <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
+          placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} aria-label="Materia" />
+        <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
+      </section>
+
       <Aviso texto={error} />
-      {ocupado && <Cargando texto={ocupado} />}
-
-      <label htmlFor="texto-leccion" style={{ ...etiqueta, marginTop: '10px' }}>
-        {leidas ? 'Esto es lo que pone en las fotos. Revísalo y corrige lo que haga falta:' : 'O escribe o pega aquí el texto:'}
-      </label>
-      <textarea id="texto-leccion" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
-        placeholder="El texto de la página del libro…" style={{ ...campo, fontSize: '18px', lineHeight: '1.5', marginBottom: '16px' }} />
-
-      <button onClick={crear} disabled={!suficiente || !!ocupado} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>Crear lección</button>
-      {!suficiente && texto.trim() && <p style={{ marginTop: '10px', color: COLOR.suave }}>Hace falta un poco más de texto.</p>}
+      {!leyendo && espera}
+      <div className="acciones-pie" style={{ marginTop: 28 }}>
+        <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">Preparar la lección</button>
+      </div>
     </div>
   )
 }
@@ -404,7 +494,7 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
       if (publicar) setPublicada(true)
       setAviso({
-        texto: publicar ? '¡Publicada! Los alumnos la tendrán la próxima vez que se conecten.' : 'Guardado.',
+        texto: publicar ? 'Publicada. Tus alumnos la tendrán la próxima vez que se conecten.' : 'Guardado.',
         color: COLOR.verde,
       })
     } catch (e) {
@@ -414,76 +504,93 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     }
   }
 
-  const area = (clave, filas) => (
-    <textarea value={leccion[clave]} onChange={e => cambiar(clave, e.target.value)} rows={filas}
-      style={{ ...campo, fontSize: '18px', lineHeight: '1.5', marginBottom: '20px' }} />
+  const area = (id, clave, filas) => (
+    <textarea id={id} className="campo" value={leccion[clave]} onChange={e => cambiar(clave, e.target.value)} rows={filas} />
   )
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver a la clase</button>
-      <h1 style={titulo}>{publicada ? 'Lección publicada' : 'Revisa la lección'}</h1>
-      {!publicada && <p style={{ fontSize: '19px', marginBottom: '20px' }}>La ha preparado la IA: léela y corrige lo que haga falta antes de publicarla.</p>}
+    <div className="pagina">
+      <header className="cabecera">
+        <Volver onClick={onVolver}>La clase</Volver>
+        {publicada && <span className="insignia insignia-verde">Publicada</span>}
+      </header>
+      <h1 className="titulo">{publicada ? 'Lección publicada' : 'Revisa la lección'}</h1>
+      <p className="frase">{publicada
+        ? 'Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.'
+        : 'Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.'}</p>
 
-      <label style={etiqueta}>Título</label>
-      <input value={leccion.titulo} onChange={e => cambiar('titulo', e.target.value)} style={{ ...campo, marginBottom: '20px' }} />
-      <label style={etiqueta}>Materia</label>
-      <input value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder="General" style={{ ...campo, marginBottom: '20px' }} />
-      <label style={etiqueta}>Lectura fácil</label>
-      {area('lectura_facil', 7)}
-      <label style={etiqueta}>Explicación con un ejemplo</label>
-      {area('explicacion_ejemplo', 4)}
+      <div className="formulario" style={{ marginTop: 28 }}>
+        <div className="campo-grupo">
+          <label htmlFor="r-titulo" className="etiqueta">Título</label>
+          <input id="r-titulo" className="campo" value={leccion.titulo} onChange={e => cambiar('titulo', e.target.value)} />
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="r-materia" className="etiqueta">Materia</label>
+          <input id="r-materia" className="campo" value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder="General" />
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="r-lectura" className="etiqueta">Lectura fácil</label>
+          {area('r-lectura', 'lectura_facil', 8)}
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="r-ejemplo" className="etiqueta">Un ejemplo</label>
+          {area('r-ejemplo', 'explicacion_ejemplo', 5)}
+        </div>
+      </div>
 
-      <h2 style={{ fontSize: '24px', margin: '10px 0 14px' }}>Preguntas del test</h2>
-      <p style={{ marginBottom: '14px', color: COLOR.suave }}>Marca el círculo de la respuesta correcta.</p>
-      {leccion.preguntas.map((p, i) => (
-        <fieldset key={i} style={{ ...tarjeta, marginBottom: '18px' }}>
-          <legend style={{ fontWeight: 'bold', fontSize: '19px', padding: '0 6px' }}>Pregunta {i + 1}</legend>
-          <input value={p.pregunta} onChange={e => cambiarPregunta(i, { pregunta: e.target.value })} style={{ ...campo, fontSize: '18px', marginBottom: '12px' }} />
-          {p.opciones.map((o, k) => (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-              <input type="radio" name={`correcta-${i}`} checked={p.correcta === k} onChange={() => cambiarPregunta(i, { correcta: k })}
-                aria-label={`Opción ${k + 1} es la correcta`} style={{ width: '26px', height: '26px', flexShrink: 0 }} />
-              <input value={o} onChange={e => cambiarOpcion(i, k, e.target.value)}
-                style={{ ...campo, fontSize: '18px', padding: '10px', borderColor: p.correcta === k ? COLOR.verde : COLOR.borde }} />
-            </div>
-          ))}
-          <label style={{ display: 'block', margin: '10px 0 6px', color: COLOR.suave }}>Por qué es la correcta</label>
-          <input value={p.porque} onChange={e => cambiarPregunta(i, { porque: e.target.value })} style={{ ...campo, fontSize: '17px', padding: '10px' }} />
-        </fieldset>
-      ))}
+      <section className="seccion">
+        <h2 className="seccion-titulo">Las preguntas</h2>
+        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.</p>
+        {leccion.preguntas.map((p, i) => (
+          <fieldset key={i} className="tarjeta" style={{ marginBottom: 16 }}>
+            <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>Pregunta {i + 1}</legend>
+            <input className="campo" value={p.pregunta} onChange={e => cambiarPregunta(i, { pregunta: e.target.value })} aria-label={`Pregunta ${i + 1}`}
+              style={{ marginBottom: 14, fontWeight: 650 }} />
+            {p.opciones.map((o, k) => (
+              <div key={k} className={`opcion-editar ${p.correcta === k ? 'opcion-editar-buena' : ''}`}>
+                <input type="radio" name={`correcta-${i}`} checked={p.correcta === k} onChange={() => cambiarPregunta(i, { correcta: k })}
+                  aria-label={`La opción ${'ABCD'[k]} es la buena`} />
+                <input className="campo" value={o} onChange={e => cambiarOpcion(i, k, e.target.value)} aria-label={`Opción ${'ABCD'[k]}`} />
+              </div>
+            ))}
+            <label htmlFor={`porque-${i}`} className="etiqueta" style={{ marginTop: 14, fontSize: 16 }}>Por qué es la buena</label>
+            <input id={`porque-${i}`} className="campo" value={p.porque} onChange={e => cambiarPregunta(i, { porque: e.target.value })} style={{ fontSize: 18 }} />
+          </fieldset>
+        ))}
+      </section>
 
       <Aviso texto={aviso.texto} color={aviso.color} />
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        {publicada
-          ? <button onClick={() => enviar(true)} disabled={guardando} style={boton(COLOR.verde, { flex: 1 })}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
-          : (
-            <>
-              <button onClick={() => enviar(false)} disabled={guardando} style={boton(COLOR.gris, { flex: '1 1 180px' })}>Guardar borrador</button>
-              <button onClick={() => enviar(true)} disabled={guardando} style={boton(COLOR.verde, { flex: '1 1 180px' })}>{guardando ? 'Publicando…' : 'Publicar'}</button>
-            </>
-          )}
+      <div className="acciones-pie">
+        <div className="botones-fila">
+          {publicada
+            ? <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? 'Guardando…' : 'Guardar los cambios'}</button>
+            : (
+              <>
+                <button onClick={() => enviar(false)} disabled={guardando} className="boton boton-secundario">Guardar sin publicar</button>
+                <button onClick={() => enviar(true)} disabled={guardando} className="boton boton-principal">{guardando ? 'Publicando…' : 'Publicar'}</button>
+              </>
+            )}
+        </div>
       </div>
     </div>
   )
 }
 
-// ---------- Alumno ----------
-// Barra fija arriba: dice si las respuestas guardadas en el móvil ya han llegado al profe.
+// ---------- Estudiante ----------
+// Una línea fija arriba: dice si las respuestas guardadas en el móvil ya han llegado al profe.
 function BarraEnvio({ estado, pendientes }) {
-  const n = `${pendientes} ${pendientes === 1 ? 'respuesta' : 'respuestas'}`
-  const [fondo, texto] =
-    estado === 'enviando' ? ['#fef08a', pendientes ? `Enviando ${n}…` : 'Buscando lecciones nuevas…']
-      : estado === 'sin-conexion' ? ['#fecaca', pendientes ? `Sin conexión · ${n} por enviar` : 'Sin conexión · puedes seguir usando lo descargado']
-        : estado === 'error' ? ['#fecaca', `No se ha podido enviar · ${n} por enviar · se reintentará solo`]
-          : pendientes ? ['#fef08a', `${n} por enviar`]
-            : ['#bbf7d0', 'Todo enviado ✓']
-  return (
-    <div role="status" style={{ position: 'sticky', top: 0, zIndex: 10, padding: '12px 16px', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', backgroundColor: fondo, color: '#1c1917' }}>
-      {texto}
-    </div>
-  )
+  const n = plural(pendientes, 'respuesta', 'respuestas')
+  const [clase, texto] =
+    estado === 'enviando' ? ['estado-enviando', pendientes ? `Enviando ${n}…` : 'Buscando lecciones nuevas…']
+      : estado === 'sin-conexion' ? ['', pendientes ? `Sin conexión · ${n} por enviar` : 'Sin conexión · tus lecciones funcionan igual']
+        : estado === 'error' ? ['estado-error', `No se ha podido enviar · ${n} por enviar · se reintentará solo`]
+          : pendientes ? ['estado-pendiente', `${n} por enviar`]
+            : ['estado-ok', 'Todo enviado a tu profe']
+  return <div role="status" className={`estado ${clase}`}><span className="punto" />{texto}</div>
 }
+
+const respuestaBienFormada = (r) => r && typeof r.id === 'string' && typeof r.alumno === 'string'
+  && typeof r.leccion_id === 'string' && Number.isInteger(r.pregunta) && Number.isInteger(r.respuesta) && typeof r.fecha === 'string'
 
 // ¿Está la app guardada en el aparato (service worker activo) para abrirla sin conexión?
 // true: sí · false: guardándose · null: este navegador no puede (hace falta https o localhost).
@@ -501,7 +608,7 @@ const cuando = (iso) => {
     : `el ${d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })} a las ${hora}`
 }
 
-// Círculo verde con la flecha hacia abajo: «esto ya está en el aparato».
+// Círculo verde con la flecha hacia abajo: «esto ya está en el móvil».
 function IconoDescargado({ tam = 22 }) {
   return (
     <svg width={tam} height={tam} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -511,38 +618,31 @@ function IconoDescargado({ tam = 22 }) {
   )
 }
 
-function AvisoDescargado({ lecciones, appGuardada, actualizado }) {
-  const n = lecciones === 1 ? '1 lección guardada' : `${lecciones} lecciones guardadas`
-  const [fondo, borde, color, cabecera, texto] =
-    appGuardada === true ? ['#f0fdf4', COLOR.verde, COLOR.verde, 'Descargado en este aparato', `${n}: ${lecciones === 1 ? 'la' : 'las'} puedes hacer sin conexión. Las nuevas se descargan solas cuando hay conexión.`]
-      : appGuardada === false ? ['#fefce8', '#ca8a04', '#854d0e', 'Guardando la app en este aparato…', `${n}. Espera un momento antes de quedarte sin conexión.`]
-        : ['#fef2f2', COLOR.rojo, COLOR.rojo, 'Sin conexión no se abrirá la app', `${n}, pero este navegador no puede guardar la app. Entra con el enlace https.`]
+function ResumenDescargado({ lecciones, appGuardada, actualizado }) {
+  if (appGuardada === null) {
+    return <p className="aviso aviso-atencion"><strong>Sin conexión, la app no se abrirá</strong>Este navegador no puede guardarla. Entra con el enlace https que te dé tu profe.</p>
+  }
   return (
-    <div style={{ ...tarjeta, backgroundColor: fondo, borderColor: borde, marginBottom: '24px' }}>
-      <p style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '20px', fontWeight: 'bold', color }}>
-        {appGuardada === true && <IconoDescargado tam={28} />}{cabecera}
-      </p>
-      <p style={{ fontSize: '18px', marginTop: '6px' }}>{texto}</p>
-      {actualizado && <p style={{ fontSize: '16px', color: COLOR.suave, marginTop: '6px' }}>Última vez que se buscaron lecciones nuevas: {cuando(actualizado)}.</p>}
+    <div className="frase" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      {appGuardada ? <IconoDescargado tam={26} /> : <span className="ruedita" style={{ width: 24, height: 24, borderWidth: 3, flexShrink: 0 }} />}
+      <span>
+        {appGuardada
+          ? `Tienes ${plural(lecciones, 'lección guardada', 'lecciones guardadas')} en este móvil. Funcionan sin conexión.`
+          : 'Guardando la app en este móvil… Espera un momento antes de quedarte sin conexión.'}
+        {actualizado && <span className="nota" style={{ display: 'block', marginTop: 4 }}>Lecciones nuevas buscadas {cuando(actualizado)}.</span>}
+      </span>
     </div>
   )
 }
 
-const respuestaBienFormada = (r) => r && typeof r.id === 'string' && typeof r.alumno === 'string'
-  && typeof r.leccion_id === 'string' && Number.isInteger(r.pregunta) && Number.isInteger(r.respuesta) && typeof r.fecha === 'string'
-
 // Varios niños pueden compartir un móvil: cada uno entra con su usuario y su contraseña, también sin conexión.
 // En el aparato: «perfiles» (los que han entrado aquí, con un hash de su contraseña) y, por alumno,
-// «clases:ID», «version:ID» y «actualizado:ID». Las respuestas pendientes son del aparato (cada una lleva su alumno).
-const COLORES_AVATAR = ['#2563eb', '#16a34a', '#c2410c', '#7c3aed', '#db2777', '#0e7490']
+// «clases:ID», «version:ID», «actualizado:ID» y «progreso:ID». Las respuestas pendientes son del aparato.
+const COLORES_AVATAR = ['#8a5a00', '#17784b', '#a4462e', '#3d5a73', '#6b4a7a', '#4f483c']
 
 function Avatar({ nombre, tam = 52 }) {
   const color = COLORES_AVATAR[[...nombre].reduce((n, c) => n + c.charCodeAt(0), 0) % COLORES_AVATAR.length]
-  return (
-    <span aria-hidden="true" style={{ width: tam, height: tam, borderRadius: '50%', backgroundColor: color, color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: tam * 0.45, fontWeight: 'bold', flexShrink: 0 }}>
-      {nombre.trim()[0]?.toUpperCase()}
-    </span>
-  )
+  return <span aria-hidden="true" className="avatar" style={{ width: tam, height: tam, fontSize: tam * 0.44, backgroundColor: color }}>{nombre.trim()[0]?.toUpperCase()}</span>
 }
 
 // Guarda (o actualiza) al alumno en este aparato con un hash de su contraseña, para que pueda entrar sin conexión.
@@ -554,25 +654,32 @@ async function recordarEnAparato(alumno, contrasena) {
 
 const sugerirUsuario = (nombre) => nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)
 const usuarioValido = (u) => /^[a-z0-9]{3,20}$/.test(u)
-const pista = { fontSize: '17px', color: COLOR.suave, margin: '8px 0 20px' }
+const limpiarCodigo = (codigo) => codigo.toUpperCase().replace(/[^A-Z0-9]/g, '')
 
-function CampoContrasena({ id, valor, onCambio, nueva = false }) {
+function CampoContrasena({ id, valor, onCambio, nueva = false, autoFocus = false }) {
   const [ver, setVer] = useState(false)
   return (
-    <div style={{ display: 'flex', gap: '8px' }}>
+    <div className="campo-con-boton">
       {/* autoComplete: en un móvil compartido el navegador no debe rellenar la contraseña de otro niño */}
-      <input id={id} type={ver ? 'text' : 'password'} value={valor} onChange={e => onCambio(e.target.value)} maxLength={64}
-        autoComplete={nueva ? 'new-password' : 'off'} autoCapitalize="off" autoCorrect="off" spellCheck={false}
-        style={{ ...campo, fontSize: '24px', flex: 1, minWidth: 0 }} />
-      <button type="button" onClick={() => setVer(!ver)} aria-pressed={ver} style={boton(COLOR.gris, { fontSize: '17px', padding: '10px 14px' })}>
+      <input id={id} className="campo" type={ver ? 'text' : 'password'} value={valor} onChange={e => onCambio(e.target.value)} maxLength={64} autoFocus={autoFocus}
+        autoComplete={nueva ? 'new-password' : 'off'} autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
+      <button type="button" onClick={() => setVer(!ver)} aria-pressed={ver} className="boton boton-secundario boton-pequeno" style={{ minHeight: 56 }}>
         {ver ? 'Ocultar' : 'Ver'}
       </button>
     </div>
   )
 }
 
-const campoCodigo = { ...campo, fontSize: '28px', letterSpacing: '4px', fontFamily: 'ui-monospace, Menlo, monospace' }
-const limpiarCodigo = (codigo) => codigo.toUpperCase().replace(/[^A-Z0-9]/g, '')
+function CampoCodigo({ valor, onCambio }) {
+  return (
+    <div className="campo-grupo">
+      <label htmlFor="codigo-clase" className="etiqueta">Código de la clase</label>
+      <input id="codigo-clase" className="campo campo-codigo" value={valor} onChange={e => onCambio(e.target.value.toUpperCase())} maxLength={12}
+        autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="ABC123" />
+      <p className="pista">Son 6 letras y números. Te lo dice tu profe.</p>
+    </div>
+  )
+}
 
 function VistaAlumno({ onVolver }) {
   // Quién usa el aparato ahora: solo en memoria, así al volver a abrir la app se pregunta otra vez.
@@ -590,33 +697,38 @@ function AlumnoQuienEres({ onEntrar, onVolver }) {
   const antiguo = leer('alumno-perfil', null)
   if (vista === 'nuevo' || vista === 'antiguo') return <AlumnoNuevo antiguo={vista === 'antiguo' ? antiguo : null} onEntrar={onEntrar} onVolver={() => setVista(null)} />
   if (vista) return <AlumnoContrasena perfil={vista === 'usuario' ? null : vista} onEntrar={onEntrar} onVolver={() => setVista(null)} />
+
+  const hay = perfiles.length > 0 || !!antiguo?.nombre
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>¿Quién eres?</h1>
-      {antiguo?.nombre && (
-        <button onClick={() => setVista('antiguo')}
-          style={{ ...tarjeta, width: '100%', borderColor: '#ca8a04', backgroundColor: '#fefce8', display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'left', cursor: 'pointer', fontSize: '22px', fontWeight: 'bold', marginBottom: '12px' }}>
-          <Avatar nombre={antiguo.nombre} />
-          <span>{antiguo.nombre}<span style={{ display: 'block', fontSize: '17px', fontWeight: 'normal', color: '#854d0e' }}>Ponle usuario y contraseña para seguir</span></span>
-        </button>
-      )}
-      {perfiles.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} /></header>
+      <h1 className="titulo">¿Quién eres?</h1>
+      <p className="frase">{hay ? 'Toca tu nombre.' : 'Crea tu usuario para empezar. Si ya tienes uno, entra con él.'}</p>
+
+      {hay && (
+        <div className="lista" style={{ marginTop: 24 }}>
+          {antiguo?.nombre && (
+            <button onClick={() => setVista('antiguo')} className="fila fila-toca">
+              <Avatar nombre={antiguo.nombre} />
+              <span className="fila-texto"><span className="fila-titulo">{antiguo.nombre}</span><span className="fila-detalle">Ponle usuario y contraseña para seguir</span></span>
+              <Icono nombre="seguir" className="icono-final" />
+            </button>
+          )}
           {perfiles.map(p => (
-            <button key={p.id} onClick={() => setVista(p)}
-              style={{ ...tarjeta, display: 'flex', alignItems: 'center', gap: '16px', textAlign: 'left', cursor: 'pointer', fontSize: '22px', fontWeight: 'bold' }}>
+            <button key={p.id} onClick={() => setVista(p)} className="fila">
               <Avatar nombre={p.nombre} />
-              <span>{p.nombre}<span style={{ display: 'block', fontSize: '17px', fontWeight: 'normal', color: COLOR.suave }}>{p.usuario}</span></span>
+              <span className="fila-texto"><span className="fila-titulo">{p.nombre}</span><span className="fila-detalle">{p.usuario}</span></span>
+              <Icono nombre="seguir" className="icono-final" />
             </button>
           ))}
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <button onClick={() => setVista('nuevo')} style={boton(COLOR.verde)}>Crear mi usuario</button>
-        <button onClick={() => setVista('usuario')} style={boton(COLOR.gris)}>Ya tengo usuario</button>
+
+      <div className={hay ? 'botones-fila' : 'botones'} style={{ marginTop: 28 }}>
+        <button onClick={() => setVista('nuevo')} className={`boton ${hay ? 'boton-secundario' : 'boton-principal boton-grande'}`}><Icono nombre="mas" />Crear mi usuario</button>
+        <button onClick={() => setVista('usuario')} className={`boton boton-secundario ${hay ? '' : 'boton-grande'}`}>Ya tengo usuario</button>
       </div>
-      <p style={{ ...pista, marginTop: '20px' }}>En este móvil o tablet pueden entrar varios alumnos, cada uno con su usuario y su contraseña.</p>
+      <p className="nota" style={{ marginTop: 22 }}>En un mismo móvil pueden entrar varios estudiantes, cada uno con su usuario y su contraseña.</p>
     </div>
   )
 }
@@ -640,28 +752,33 @@ function AlumnoContrasena({ perfil, onEntrar, onVolver }) {
       onEntrar(a)
     } catch (e) {
       setError(e.message !== SIN_CONEXION ? e.message
-        : perfil?.hash ? 'Contraseña incorrecta.' : 'La primera vez en este aparato hace falta conexión con el ordenador de la clase.')
+        : perfil?.hash ? 'Contraseña incorrecta.' : 'La primera vez en este móvil hace falta conexión con el ordenador de la clase.')
       setEnviando(false)
     }
   }
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver}>{perfil ? 'No soy yo' : 'Volver'}</Volver></header>
       {perfil
-        ? <h1 style={{ ...titulo, display: 'flex', alignItems: 'center', gap: '14px' }}><Avatar nombre={perfil.nombre} />Hola, {perfil.nombre}</h1>
-        : <h1 style={titulo}>Entrar con mi usuario</h1>}
-      <form onSubmit={entrar} style={tarjeta}>
-        {!perfil && <>
-          <label htmlFor="entrar-usuario" style={etiqueta}>Tu usuario</label>
-          <input id="entrar-usuario" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
-            autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ ...campo, fontSize: '24px', marginBottom: '20px' }} />
-        </>}
-        <label htmlFor="entrar-contrasena" style={etiqueta}>Tu contraseña</label>
-        <CampoContrasena id="entrar-contrasena" valor={contrasena} onCambio={setContrasena} />
-        <p style={pista}>¿Se te ha olvidado? Pídele a tu profe una contraseña nueva.</p>
+        ? <h1 className="titulo titulo-con-avatar"><Avatar nombre={perfil.nombre} />Hola, {perfil.nombre}</h1>
+        : <h1 className="titulo">Entrar con mi usuario</h1>}
+      <p className="frase">{perfil ? 'Escribe tu contraseña.' : 'Escribe tu usuario y tu contraseña.'}</p>
+      <form onSubmit={entrar} className="formulario" style={{ marginTop: 24 }}>
+        {!perfil && (
+          <div className="campo-grupo">
+            <label htmlFor="entrar-usuario" className="etiqueta">Usuario</label>
+            <input id="entrar-usuario" className="campo" value={usuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
+              autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
+          </div>
+        )}
+        <div className="campo-grupo">
+          <label htmlFor="entrar-contrasena" className="etiqueta">Contraseña</label>
+          <CampoContrasena id="entrar-contrasena" valor={contrasena} onCambio={setContrasena} autoFocus={!!perfil} />
+          <p className="pista">¿Se te ha olvidado? Pídele a tu profe una nueva.</p>
+        </div>
         <Aviso texto={error} />
-        <button type="submit" disabled={enviando || !usuarioValido(usuario) || contrasena.length < 4} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+        <button type="submit" disabled={enviando || !usuarioValido(usuario) || contrasena.length < 4} className="boton boton-principal boton-ancho boton-grande">
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>
       </form>
@@ -701,30 +818,32 @@ function AlumnoNuevo({ antiguo, onEntrar, onVolver }) {
   }
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>{antiguo ? 'Ponle usuario y contraseña' : 'Crear mi usuario'}</h1>
-      {antiguo && <p style={{ ...pista, marginTop: 0 }}>Antes se entraba solo con el nombre. Ahora cada alumno tiene usuario y contraseña, para que nadie entre como tú. Conservas tus clases y tus respuestas.</p>}
-      <form onSubmit={crear} style={tarjeta}>
-        <label htmlFor="nuevo-nombre" style={etiqueta}>¿Cómo te llamas?</label>
-        <input id="nuevo-nombre" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off"
-          placeholder="Tu nombre" style={{ ...campo, marginBottom: '20px' }} />
-        <label htmlFor="nuevo-usuario" style={etiqueta}>Tu usuario</label>
-        <input id="nuevo-usuario" value={elUsuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
-          autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ ...campo, fontSize: '24px' }} />
-        <p style={pista}>Solo letras y números, sin espacios. Apúntalo: lo necesitas para entrar.</p>
-        <label htmlFor="nuevo-contrasena" style={etiqueta}>Tu contraseña</label>
-        <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
-        <p style={pista}>Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.</p>
-        {!antiguo && <>
-          <label htmlFor="nuevo-codigo" style={etiqueta}>Código de la clase</label>
-          <input id="nuevo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
-            autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
-            style={{ ...campoCodigo, marginBottom: '20px' }} />
-        </>}
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} /></header>
+      <h1 className="titulo">{antiguo ? 'Ponle usuario y contraseña' : 'Crear mi usuario'}</h1>
+      <p className="frase">{antiguo
+        ? 'Antes se entraba solo con el nombre. Ahora cada estudiante tiene usuario y contraseña, para que nadie entre como tú. No pierdes tus clases ni tus respuestas.'
+        : 'Te pediremos la contraseña cada vez que entres. Así nadie más puede entrar como tú.'}</p>
+      <form onSubmit={crear} className="formulario" style={{ marginTop: 24 }}>
+        <div className="campo-grupo">
+          <label htmlFor="nuevo-nombre" className="etiqueta">¿Cómo te llamas?</label>
+          <input id="nuevo-nombre" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={40} autoComplete="off" placeholder="Tu nombre" />
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="nuevo-usuario" className="etiqueta">Tu usuario</label>
+          <input id="nuevo-usuario" className="campo" value={elUsuario} onChange={e => setUsuario(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} maxLength={20}
+            autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} style={{ fontSize: 24 }} />
+          <p className="pista">Solo letras y números, sin espacios. Apúntalo: lo necesitas para entrar.</p>
+        </div>
+        <div className="campo-grupo">
+          <label htmlFor="nuevo-contrasena" className="etiqueta">Tu contraseña</label>
+          <CampoContrasena id="nuevo-contrasena" valor={contrasena} onCambio={setContrasena} nueva />
+          <p className="pista">Al menos 4 letras o números. Que la recuerdes bien y no se la digas a nadie.</p>
+        </div>
+        {!antiguo && <CampoCodigo valor={codigo} onCambio={setCodigo} />}
         <Aviso texto={error} />
         <button type="submit" disabled={enviando || !nombre.trim() || !usuarioValido(elUsuario) || contrasena.length < 4 || (!antiguo && codigoLimpio.length !== 6)}
-          style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+          className="boton boton-principal boton-ancho boton-grande">
           {enviando ? 'Guardando…' : antiguo ? 'Guardar y entrar' : 'Crear y entrar'}
         </button>
       </form>
@@ -740,6 +859,9 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [otraClase, setOtraClase] = useState(false)
   const [leccion, setLeccion] = useState(null)
   const [actualizado, setActualizado] = useState(() => leer(clave('actualizado'), null))
+  const [progreso, setProgreso] = useState(() => leer(clave('progreso'), {})) // { leccion_id: { empezada, hecha, aciertos, total } }
+  const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
+  const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -751,14 +873,20 @@ function AlumnoCasa({ alumno, onSalir }) {
     const quedan = leer('pendientes', []).filter(p => !recibidas.has(p.id))
     guardar('pendientes', quedan)
     setPendientes(quedan.length)
+    const dudasRecibidas = new Set(sw.dudas_recibidas || [])
+    const dudasQuedan = leer('dudas-pendientes', []).filter(d => !dudasRecibidas.has(d.id))
+    guardar('dudas-pendientes', dudasQuedan)
+    setDudasCola(dudasQuedan)
     for (const [id, d] of Object.entries(sw.alumnos || {})) {
       if (d.clases) {
         guardar(`clases:${id}`, d.clases)
         guardar(`version:${id}`, d.version)
       }
+      if (d.dudas) guardar(`dudas:${id}`, d.dudas)
       if (sw.fecha > (leer(`actualizado:${id}`, null) || '')) guardar(`actualizado:${id}`, sw.fecha)
     }
     setClases(leer(`clases:${alumno.id}`, []))
+    setDudas(leer(`dudas:${alumno.id}`, []))
     setActualizado(leer(`actualizado:${alumno.id}`, null))
   }, [alumno.id])
 
@@ -772,7 +900,10 @@ function AlumnoCasa({ alumno, onSalir }) {
     try {
       const r = await api('/api/sync', {
         method: 'POST',
-        body: { alumno_id: alumno.id, respuestas: enviadas, version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null },
+        body: {
+          alumno_id: alumno.id, respuestas: enviadas, dudas: leer('dudas-pendientes', []),
+          version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null,
+        },
       })
       const recibidas = new Set(r.recibidas)
       // Las respuestas que se dieron mientras se enviaba se quedan para la próxima vez.
@@ -783,6 +914,12 @@ function AlumnoCasa({ alumno, onSalir }) {
         setClases(r.clases)
         guardar(`clases:${alumno.id}`, r.clases) // así las lecciones se pueden usar sin conexión
       }
+      const dudasRecibidas = new Set(r.dudas_recibidas)
+      const dudasQuedan = leer('dudas-pendientes', []).filter(d => !dudasRecibidas.has(d.id))
+      guardar('dudas-pendientes', dudasQuedan)
+      setDudasCola(dudasQuedan)
+      guardar(`dudas:${alumno.id}`, r.dudas)
+      setDudas(r.dudas)
       guardar(`version:${alumno.id}`, r.version)
       const ahora = new Date().toISOString()
       guardar(`actualizado:${alumno.id}`, ahora)
@@ -794,6 +931,14 @@ function AlumnoCasa({ alumno, onSalir }) {
       enCurso.current = false
     }
   }, [alumno.id, recoger])
+
+  // Mientras espera la respuesta a una duda, pregunta cada 5 segundos en vez de cada 30.
+  const esperando = dudasCola.some(d => d.alumno === alumno.id) || dudas.some(d => !d.respuesta)
+  useEffect(() => {
+    if (!esperando) return undefined
+    const t = setInterval(sincronizar, 5000)
+    return () => clearInterval(t)
+  }, [esperando, sincronizar])
 
   useEffect(() => {
     sincronizar()
@@ -814,54 +959,92 @@ function AlumnoCasa({ alumno, onSalir }) {
     }
   }, [sincronizar, recoger])
 
+  // Lo que lleva hecho en cada lección, para decirle cuál le toca.
+  const apuntar = (leccionId, datos) => {
+    const todo = leer(clave('progreso'), {})
+    const nuevo = { ...todo, [leccionId]: { ...todo[leccionId], ...datos } }
+    guardar(clave('progreso'), nuevo)
+    setProgreso(nuevo)
+  }
+
+  // La duda se guarda en el móvil y viaja con la sincronización: sirve también sin conexión.
+  const preguntar = (leccionId, pregunta) => {
+    const cola = [...leer('dudas-pendientes', []), { id: nuevoId(), alumno: alumno.id, leccion_id: leccionId, pregunta, fecha: new Date().toISOString() }]
+    guardar('dudas-pendientes', cola)
+    setDudasCola(cola)
+    sincronizar()
+  }
+  const dudasDe = (leccionId) => {
+    const delServidor = dudas.filter(d => d.leccion_id === leccionId)
+    const ids = new Set(delServidor.map(d => d.id))
+    return [...delServidor, ...dudasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id))]
+  }
+
   if (otraClase) {
     return <AlumnoOtraClase alumno={alumno} onVolver={() => setOtraClase(false)} onDentro={() => { setOtraClase(false); sincronizar() }} />
   }
 
   const barra = <BarraEnvio estado={estado} pendientes={pendientes} />
-  const total = clases.reduce((n, c) => n + c.lecciones.length, 0)
   if (leccion) {
     return (
       <>
         {barra}
-        <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => setLeccion(null)}
-          onRespuesta={() => setPendientes(leer('pendientes', []).length)} onTerminar={sincronizar} />
+        <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
+          onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
+          onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} />
       </>
     )
   }
 
+  const grupos = clases.map(c => [c, porMateria(c.lecciones, l => l.contenido?.materia)])
+  const total = clases.reduce((n, c) => n + c.lecciones.length, 0)
+  const toca = grupos.flatMap(([, g]) => g.flatMap(([, ls]) => ls)).find(l => !progreso[l.id]?.hecha)?.id
+
   return (
     <>
       {barra}
-      <div style={pagina}>
-        <button onClick={onSalir} style={botonVolver}>Salir</button>
-        <h1 style={{ ...titulo, display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}><Avatar nombre={alumno.nombre} />Hola, {alumno.nombre}</h1>
-        <p style={{ ...pista, marginTop: 0 }}>Cuando termines, pulsa «Salir» para que pueda entrar otro alumno.</p>
+      <div className="pagina">
+        <header className="cabecera">
+          <span className="marca">Mochila</span>
+          <button onClick={onSalir} className="boton boton-secundario boton-pequeno"><Icono nombre="salir" tam={20} />Salir</button>
+        </header>
+        <h1 className="titulo titulo-con-avatar"><Avatar nombre={alumno.nombre} />Hola, {alumno.nombre}</h1>
+        {total > 0 && <ResumenDescargado lecciones={total} appGuardada={appGuardada} actualizado={actualizado} />}
+        {clases.length === 0 && (
+          <p className="frase">{estado === 'sin-conexion'
+            ? 'Cuando haya conexión aparecerán tus clases.'
+            : 'Todavía no estás en ninguna clase. Pulsa «Entrar en otra clase» y escribe el código que te dé tu profe.'}</p>
+        )}
 
-        {total > 0 && <AvisoDescargado lecciones={total} appGuardada={appGuardada} actualizado={actualizado} />}
-
-        {clases.length === 0 && <p style={{ color: COLOR.suave, marginBottom: '20px' }}>{estado === 'sin-conexion' ? 'Cuando haya conexión aparecerán tus clases.' : 'Todavía no estás en ninguna clase.'}</p>}
-
-        {clases.map(c => {
-          const grupos = porMateria(c.lecciones, l => l.contenido?.materia)
-          const conTitulos = grupos.length > 1 || (grupos[0] && grupos[0][0] !== 'General')
+        {grupos.map(([c, materias]) => {
+          const conTitulos = materias.length > 1 || (materias[0] && materias[0][0] !== 'General')
           return (
-            <section key={c.codigo} style={{ marginBottom: '30px' }}>
-              <h2 style={{ fontSize: '24px', marginBottom: '12px' }}>{c.nombre}</h2>
-              {c.lecciones.length === 0 && <p style={{ color: COLOR.suave }}>Tu profe todavía no ha publicado lecciones.</p>}
-              {grupos.map(([materia, lecciones]) => (
-                <div key={materia} style={{ marginBottom: '18px' }}>
-                  {conTitulos && <h3 style={{ fontSize: '20px', color: COLOR.gris, marginBottom: '10px' }}>{materia}</h3>}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {lecciones.map(l => (
-                      <button key={l.id} onClick={() => setLeccion(l)}
-                        style={{ ...tarjeta, borderColor: COLOR.verde, borderWidth: '3px', textAlign: 'left', fontSize: '22px', fontWeight: 'bold', cursor: 'pointer' }}>
-                        {l.titulo}
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '16px', fontWeight: 'normal', color: COLOR.verde }}>
-                          <IconoDescargado />Descargada
-                        </span>
-                      </button>
-                    ))}
+            <section key={c.codigo} className="seccion">
+              <h2 className="seccion-titulo">{c.nombre}</h2>
+              {c.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>Tu profe todavía no ha publicado lecciones.</p>}
+              {materias.map(([materia, lecciones]) => (
+                <div key={materia}>
+                  {conTitulos && <h3 className="subtitulo">{materia}</h3>}
+                  <div className="lista">
+                    {lecciones.map(l => {
+                      const p = progreso[l.id]
+                      return (
+                        <button key={l.id} onClick={() => { setLeccion(l); window.scrollTo(0, 0) }} className={`fila ${l.id === toca ? 'fila-toca' : ''}`}>
+                          <span className="fila-texto">
+                            <span className="fila-titulo">{l.titulo}</span>
+                            <span className="fila-detalle">
+                              <span className="descargada"><IconoDescargado tam={18} />Descargada</span>
+                              {p?.hecha
+                                ? <span className="descargada"><Icono nombre="bien" tam={18} />Hecha · {p.aciertos} de {p.total}</span>
+                                : <span>{p?.empezada ? 'Empezada' : 'Sin empezar'}</span>}
+                              {dudasDe(l.id).length > 0 && <span className="descargada" style={{ color: 'var(--ocre)' }}><Icono nombre="duda" tam={18} />{plural(dudasDe(l.id).filter(d => d.respuesta).length, 'duda contestada', 'dudas contestadas')}</span>}
+                            </span>
+                          </span>
+                          {l.id === toca ? <span className="insignia insignia-amarilla">Te toca</span> : <Icono nombre="seguir" className="icono-final" />}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -869,12 +1052,13 @@ function AlumnoCasa({ alumno, onSalir }) {
           )
         })}
 
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <button onClick={sincronizar} disabled={estado === 'enviando'} style={boton(COLOR.azul, { flex: '1 1 200px' })}>
-            {estado === 'enviando' ? 'Buscando…' : 'Buscar lecciones nuevas'}
+        <div className="botones" style={{ marginTop: 36 }}>
+          <button onClick={sincronizar} disabled={estado === 'enviando'} className="boton boton-secundario boton-ancho">
+            <Icono nombre="buscar" />{estado === 'enviando' ? 'Buscando…' : 'Buscar lecciones nuevas'}
           </button>
-          <button onClick={() => setOtraClase(true)} style={boton(COLOR.gris, { flex: '1 1 200px' })}>Entrar en otra clase</button>
+          <button onClick={() => setOtraClase(true)} className="boton boton-fantasma boton-ancho">Entrar en otra clase</button>
         </div>
+        <p className="nota" style={{ textAlign: 'center', marginTop: 18 }}>Cuando termines, pulsa «Salir» para que pueda entrar otro estudiante.</p>
       </div>
     </>
   )
@@ -900,16 +1084,14 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
   }
 
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>Entrar en otra clase</h1>
-      <form onSubmit={entrar} style={tarjeta}>
-        <label htmlFor="codigo-clase" style={etiqueta}>Código de la clase</label>
-        <input id="codigo-clase" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
-          autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Te lo dice tu profe"
-          style={{ ...campoCodigo, marginBottom: '20px' }} />
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver} /></header>
+      <h1 className="titulo">Entrar en otra clase</h1>
+      <p className="frase">Escribe el código que te dé tu profe.</p>
+      <form onSubmit={entrar} className="formulario" style={{ marginTop: 24 }}>
+        <CampoCodigo valor={codigo} onCambio={setCodigo} />
         <Aviso texto={error} />
-        <button type="submit" disabled={enviando || codigoLimpio.length !== 6} style={boton(COLOR.verde, { width: '100%', fontSize: '24px' })}>
+        <button type="submit" disabled={enviando || codigoLimpio.length !== 6} className="boton boton-principal boton-ancho boton-grande">
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>
       </form>
@@ -917,19 +1099,23 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
   )
 }
 
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar }) {
+// La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
-  const [pestana, setPestana] = useState('leer')
+  const [paso, setPaso] = useState(0)
   const [n, setN] = useState(0)
   const [elegida, setElegida] = useState(null)
   const [respondida, setRespondida] = useState(false)
   const [aciertos, setAciertos] = useState(0)
   const [terminado, setTerminado] = useState(false)
   const pregunta = preguntas[n]
+  const acierto = elegida === pregunta.correcta
+
+  const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
   const responder = () => {
     setRespondida(true)
-    if (elegida === pregunta.correcta) setAciertos(a => a + 1)
+    if (acierto) setAciertos(a => a + 1)
     const pendientes = leer('pendientes', [])
     pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
     guardar('pendientes', pendientes)
@@ -937,93 +1123,162 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar })
   }
 
   const siguiente = () => {
+    window.scrollTo(0, 0)
     if (n < preguntas.length - 1) {
       setN(n + 1)
       setElegida(null)
       setRespondida(false)
     } else {
       setTerminado(true)
-      onTerminar() // si hay conexión, la nota le llega al profe ya
+      onTerminar(aciertos, preguntas.length) // si hay conexión, la nota le llega al profe ya
     }
   }
 
-  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false) }
+  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
 
-  const pestanas = [['leer', 'Leer'], ['ejemplo', 'Ejemplo'], ['escuchar', 'Escuchar'], ['test', 'Test'], ['tutor', 'Tutor']]
   return (
-    <div style={pagina}>
-      <button onClick={onVolver} style={botonVolver}>Volver</button>
-      <h1 style={titulo}>{leccion.titulo}</h1>
+    <div className="pagina">
+      <header className="cabecera"><Volver onClick={onVolver}>Mis lecciones</Volver></header>
+      <h1 className="titulo">{leccion.titulo}</h1>
 
-      <div role="tablist" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: '8px', marginBottom: '26px' }}>
-        {pestanas.map(([clave, texto]) => (
-          <button key={clave} role="tab" aria-selected={pestana === clave} onClick={() => setPestana(clave)}
-            style={boton(pestana === clave ? COLOR.verde : '#e7e5e4', { color: pestana === clave ? 'white' : '#1c1917', fontSize: '17px', padding: '10px 4px' })}>
-            {texto}
-          </button>
+      <nav className="pasos" aria-label="Pasos de la lección">
+        {['Leer', 'Ejemplo', 'Preguntas'].map((t, i) => (
+          <button key={t} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
+            className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {t}</button>
         ))}
-      </div>
+      </nav>
 
-      {pestana === 'leer' && <p style={{ fontSize: '22px', lineHeight: '1.8', whiteSpace: 'pre-line' }}>{lectura_facil}</p>}
-      {pestana === 'ejemplo' && <p style={{ ...tarjeta, fontSize: '22px', lineHeight: '1.8', backgroundColor: '#eff6ff', whiteSpace: 'pre-line' }}>{explicacion_ejemplo}</p>}
-      {pestana === 'escuchar' && <Escuchar texto={lectura_facil} />}
-      {pestana === 'tutor' && <Tutor contenido={leccion.contenido} />}
+      {paso < 2 && (
+        <>
+          <article className="hoja">
+            <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} /></div>
+            <p className="hoja-texto">{paso === 0 ? lectura_facil : explicacion_ejemplo}</p>
+          </article>
+          <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
+            {paso === 0 ? 'Ya lo he leído' : 'Ir a las preguntas'}<Icono nombre="seguir" />
+          </button>
+          <Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} />
+        </>
+      )}
 
-      {pestana === 'test' && terminado && (
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: '30px', fontWeight: 'bold', marginBottom: '12px' }}>Has acertado {aciertos} de {preguntas.length}</p>
-          <p style={{ fontSize: '20px', marginBottom: '24px' }}>{aciertos === preguntas.length ? '¡Perfecto!' : 'Puedes volver a leer la lección y repetir el test.'}</p>
-          <button onClick={repetir} style={boton(COLOR.azul, { width: '100%' })}>Repetir el test</button>
+      {paso === 2 && terminado && (
+        <div className="resultado">
+          <p className="pregunta-num">Tu resultado</p>
+          <p className="resultado-cifra"><mark>{aciertos} de {preguntas.length}</mark></p>
+          <p className="resultado-texto">{aciertos === preguntas.length ? '¡Perfecto! Las has acertado todas.'
+            : aciertos >= Math.ceil(preguntas.length * 0.6) ? 'Muy bien. Repasa las que has fallado.'
+              : 'Vuelve a leer la lección y prueba otra vez.'}</p>
+          <div className="botones">
+            <button onClick={onVolver} className="boton boton-principal boton-ancho boton-grande">Volver a mis lecciones</button>
+            <button onClick={repetir} className="boton boton-secundario boton-ancho">Repetir las preguntas</button>
+            <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">Volver a leer</button>
+          </div>
+          <p className="nota">Tus respuestas le llegan a tu profe cuando hay conexión.</p>
+          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
         </div>
       )}
 
-      {pestana === 'test' && !terminado && (
-        <div>
-          <p style={{ color: COLOR.suave, marginBottom: '14px' }}>Pregunta {n + 1} de {preguntas.length}</p>
-          <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>{pregunta.pregunta}</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {paso === 2 && !terminado && (
+        <>
+          <p className="pregunta-num">Pregunta {n + 1} de {preguntas.length}</p>
+          <h2 className="pregunta-texto">{pregunta.pregunta}</h2>
+          <div className="opciones">
             {pregunta.opciones.map((opcion, i) => {
-              const fondo = respondida
-                ? (i === pregunta.correcta ? COLOR.verde : i === elegida ? COLOR.rojo : 'white')
-                : (i === elegida ? COLOR.azul : 'white')
-              const claro = fondo !== 'white'
+              const como = respondida
+                ? (i === pregunta.correcta ? 'opcion-buena' : i === elegida ? 'opcion-mala' : 'opcion-apagada')
+                : (i === elegida ? 'opcion-elegida' : '')
               return (
-                <button key={i} onClick={() => !respondida && setElegida(i)} disabled={respondida && !claro}
-                  style={{ ...tarjeta, fontSize: '21px', textAlign: 'left', cursor: respondida ? 'default' : 'pointer', backgroundColor: fondo, color: claro ? 'white' : '#1c1917', borderColor: claro ? fondo : COLOR.borde }}>
-                  {opcion}
+                <button key={i} onClick={() => setElegida(i)} disabled={respondida} aria-pressed={i === elegida} className={`opcion ${como}`}>
+                  <span className="letra">
+                    {respondida && i === pregunta.correcta ? <Icono nombre="bien" tam={20} /> : respondida && i === elegida ? <Icono nombre="mal" tam={20} /> : 'ABCD'[i]}
+                  </span>
+                  <span>{opcion}</span>
                 </button>
               )
             })}
           </div>
           {!respondida
-            ? <button onClick={responder} disabled={elegida === null} style={boton(COLOR.azul, { width: '100%', marginTop: '22px', fontSize: '22px' })}>Responder</button>
+            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>Comprobar</button>
             : (
               <>
-                <div style={{ marginTop: '22px', padding: '16px', borderRadius: '12px', backgroundColor: '#fef9c3', fontSize: '20px' }}>
-                  <strong>{elegida === pregunta.correcta ? '¡Correcto!' : 'No es esa.'}</strong>
-                  {pregunta.porque && <p style={{ marginTop: '8px' }}>{pregunta.porque}</p>}
+                <div role="status" className={`aviso ${acierto ? 'aviso-ok' : 'aviso-error'}`} style={{ marginTop: 22 }}>
+                  <strong>{acierto ? '¡Bien hecho!' : 'No es esa.'}</strong>
+                  {!acierto && <span style={{ display: 'block', marginTop: 4 }}>La buena es la {'ABCD'[pregunta.correcta]}: «{pregunta.opciones[pregunta.correcta]}»</span>}
+                  {pregunta.porque && <span style={{ display: 'block', marginTop: 6 }}>{pregunta.porque}</span>}
                 </div>
-                <button onClick={siguiente} style={boton(COLOR.verde, { width: '100%', marginTop: '14px', fontSize: '22px' })}>
-                  {n < preguntas.length - 1 ? 'Siguiente' : 'Ver resultado'}
+                <button onClick={siguiente} className="boton boton-principal boton-ancho boton-grande">
+                  {n < preguntas.length - 1 ? 'Siguiente pregunta' : 'Ver mi resultado'}<Icono nombre="seguir" />
                 </button>
               </>
             )}
-        </div>
+        </>
       )}
     </div>
   )
 }
 
+// «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
+// de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
+function Dudas({ dudas, sinConexion, onPreguntar }) {
+  const [abierta, setAbierta] = useState(false)
+  const [texto, setTexto] = useState('')
+
+  const enviar = (ev) => {
+    ev.preventDefault()
+    onPreguntar(texto.trim())
+    setTexto('')
+    setAbierta(false)
+  }
+
+  return (
+    <section className="seccion">
+      {dudas.length > 0 && (
+        <>
+          <h2 className="seccion-titulo">Mis dudas</h2>
+          <div style={{ marginBottom: 16 }}>
+            {dudas.map(d => (
+              <div key={d.id} className="tarjeta duda">
+                <p className="duda-pregunta">{d.pregunta}</p>
+                {d.respuesta
+                  ? <p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p>
+                  : <p className="nota">{sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {abierta
+        ? (
+          <form onSubmit={enviar} className="formulario">
+            <div className="campo-grupo">
+              <label htmlFor="duda-texto" className="etiqueta">¿Qué no has entendido?</label>
+              <textarea id="duda-texto" className="campo" rows={3} maxLength={300} autoFocus value={texto} onChange={e => setTexto(e.target.value)}
+                style={{ minHeight: 110 }} />
+              <p className="pista">Pregunta sobre esta lección. Te contesta Mochila con lo que dice la lección, y tu profe también lo verá.</p>
+            </div>
+            <div className="botones-fila">
+              <button type="button" onClick={() => setAbierta(false)} className="boton boton-fantasma">Cancelar</button>
+              <button type="submit" disabled={texto.trim().length < 3} className="boton boton-secundario">Enviar mi duda</button>
+            </div>
+          </form>
+        )
+        : <button onClick={() => setAbierta(true)} className="boton boton-secundario boton-ancho"><Icono nombre="duda" />Tengo una duda</button>}
+    </section>
+  )
+}
+
+// Lee en voz alta con la voz del propio móvil (sin internet si el móvil tiene la voz instalada).
 function Escuchar({ texto }) {
   const [sonando, setSonando] = useState(false)
   const hayVoz = typeof window !== 'undefined' && 'speechSynthesis' in window
 
   useEffect(() => () => { if (hayVoz) window.speechSynthesis.cancel() }, [hayVoz]) // al salir, que se calle
 
-  if (!hayVoz) return <p style={{ fontSize: '20px' }}>Este móvil no puede leer en voz alta.</p>
+  if (!hayVoz) return null
 
-  const reproducir = () => {
+  const alternar = () => {
     window.speechSynthesis.cancel()
+    if (sonando) { setSonando(false); return }
     const voz = new SpeechSynthesisUtterance(texto)
     voz.lang = 'es-ES'
     voz.rate = 0.9
@@ -1032,16 +1287,11 @@ function Escuchar({ texto }) {
     window.speechSynthesis.speak(voz)
     setSonando(true)
   }
-  const parar = () => { window.speechSynthesis.cancel(); setSonando(false) }
 
   return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', flexWrap: 'wrap' }}>
-        <button onClick={reproducir} disabled={sonando} style={boton(COLOR.verde, { fontSize: '24px', padding: '22px 36px' })}>▶ Escuchar</button>
-        <button onClick={parar} disabled={!sonando} style={boton(COLOR.rojo, { fontSize: '24px', padding: '22px 36px' })}>■ Parar</button>
-      </div>
-      <p style={{ marginTop: '24px', color: COLOR.suave }}>{sonando ? 'Leyendo en voz alta…' : 'Pulsa Escuchar y el móvil te lee la lección.'}</p>
-    </div>
+    <button onClick={alternar} aria-pressed={sonando} className="boton boton-secundario boton-pequeno">
+      <Icono nombre={sonando ? 'parar' : 'altavoz'} tam={20} />{sonando ? 'Parar' : 'Escuchar'}
+    </button>
   )
 }
 

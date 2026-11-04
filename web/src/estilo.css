@@ -1,0 +1,221 @@
+/* Mochila: papel, tinta y un solo color, el amarillo de subrayar. El amarillo solo marca lo que hay que mirar:
+   la acción principal, la lección que toca, el foco del teclado. Verde y rojo solo significan acierto y error.
+   Pensado para quien no está acostumbrado a las pantallas: letra grande, botones grandes, una acción principal por pantalla. */
+
+:root {
+  --papel: #f5f1e8;
+  --superficie: #fffdf8;
+  --hundido: #efe9dd;
+  --borde: #ddd4c3;
+  --borde-fuerte: #c8bda8;
+  --tinta: #1a1712;
+  --tinta-media: #4f483c;
+  --tinta-suave: #6b6354;
+  --amarillo: #f5b400;
+  --amarillo-claro: #ffc21f;
+  --amarillo-suave: #fcefc6;
+  --ocre: #8a5a00;
+  --sobre-amarillo: #1c1404;
+  --verde: #17784b;
+  --verde-suave: #e3f1e7;
+  --rojo: #b3302f;
+  --rojo-suave: #fbe9e6;
+  --sombra: 0 1px 2px hsl(35 30% 18% / 0.07);
+  --sombra-media: 0 1px 2px hsl(35 30% 18% / 0.06), 0 4px 10px -4px hsl(35 30% 18% / 0.16);
+  --sombra-hoja: 0 1px 3px hsl(35 30% 18% / 0.1), 0 10px 24px -12px hsl(35 30% 18% / 0.24);
+  --letra: 'Archivo Variable', ui-sans-serif, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+html, body { background: var(--papel); }
+body {
+  font-family: var(--letra);
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--tinta);
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--amarillo-suave); }
+:focus-visible { outline: 3px solid var(--amarillo); outline-offset: 2px; border-radius: 6px; }
+button { font: inherit; color: inherit; }
+img { max-width: 100%; display: block; }
+
+/* ---------- Página ---------- */
+.pagina { max-width: 640px; margin: 0 auto; padding: 12px 16px 72px; }
+.cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin-bottom: 12px; }
+.marca { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+.titulo { font-size: clamp(30px, 8.4vw, 40px); font-weight: 800; line-height: 1.04; letter-spacing: -0.035em; overflow-wrap: anywhere; }
+.titulo-con-avatar { display: flex; align-items: center; gap: 14px; }
+.frase { font-size: 19px; color: var(--tinta-media); margin-top: 10px; max-width: 32em; }
+.nota { font-size: 16px; color: var(--tinta-suave); margin-top: 8px; }
+.seccion { margin-top: 36px; }
+.seccion-titulo { font-size: 23px; font-weight: 750; letter-spacing: -0.02em; margin-bottom: 14px; }
+.subtitulo { font-size: 17px; font-weight: 650; color: var(--tinta-media); margin: 22px 0 10px; }
+.lista { display: flex; flex-direction: column; gap: 12px; }
+.espacio { height: 24px; }
+
+/* El subrayado de rotulador: amarillo por la mitad baja del texto, nunca un recuadro. */
+mark, .rotulador {
+  color: inherit;
+  background: linear-gradient(to bottom, transparent 54%, var(--amarillo) 54%, var(--amarillo) 92%, transparent 92%);
+  padding: 0 0.06em;
+}
+
+/* ---------- Botones: se ven como botones ---------- */
+.boton {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 54px; padding: 0 22px; border: 1px solid transparent; border-radius: 12px;
+  font-size: 19px; font-weight: 650; line-height: 1.2; text-align: center; cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.boton:active:not(:disabled) { transform: scale(0.98); }
+.boton:disabled { opacity: 0.5; cursor: not-allowed; }
+.boton-principal { background: var(--amarillo); color: var(--sobre-amarillo); box-shadow: var(--sombra), inset 0 1px 0 hsl(0 0% 100% / 0.35); }
+.boton-secundario { background: var(--superficie); color: var(--tinta); border-color: var(--borde-fuerte); box-shadow: var(--sombra); }
+.boton-fantasma { background: transparent; color: var(--tinta-media); min-height: 48px; padding: 0 12px; }
+.boton-ancho { width: 100%; }
+.boton-grande { min-height: 62px; font-size: 21px; border-radius: 14px; }
+.boton-pequeno { min-height: 46px; padding: 0 14px; font-size: 17px; }
+.volver { margin-left: -10px; padding-left: 4px; }
+.botones { display: flex; flex-direction: column; gap: 12px; }
+.botones-fila { display: flex; gap: 12px; flex-wrap: wrap; }
+.botones-fila > .boton { flex: 1 1 200px; }
+@media (hover: hover) {
+  .boton-principal:hover:not(:disabled) { background: var(--amarillo-claro); }
+  .boton-secundario:hover:not(:disabled) { background: var(--hundido); }
+  .boton-fantasma:hover:not(:disabled) { background: var(--hundido); }
+  .fila:hover:not(:disabled) { border-color: var(--borde-fuerte); }
+}
+
+/* La elección grande de la portada */
+.eleccion {
+  display: flex; align-items: center; gap: 16px; width: 100%; padding: 20px; min-height: 96px; text-align: left;
+  border-radius: 16px; border: 1px solid var(--borde-fuerte); background: var(--superficie); box-shadow: var(--sombra-media); cursor: pointer;
+  transition: transform 0.08s;
+}
+.eleccion:active { transform: scale(0.99); }
+.eleccion-principal { background: var(--amarillo); border-color: var(--amarillo); color: var(--sobre-amarillo); }
+.eleccion-titulo { display: block; font-size: 26px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.eleccion-detalle { display: block; font-size: 17px; margin-top: 4px; opacity: 0.85; }
+.eleccion .icono-final { margin-left: auto; flex-shrink: 0; }
+
+/* ---------- Tarjetas y filas ---------- */
+.tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; box-shadow: var(--sombra); padding: 18px; }
+.fila {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; padding: 14px 16px; text-align: left;
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; box-shadow: var(--sombra); cursor: pointer;
+  transition: border-color 0.15s, transform 0.08s;
+}
+.fila:active:not(:disabled) { transform: scale(0.99); }
+.fila-texto { flex: 1; min-width: 0; }
+.fila-titulo { display: block; font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.fila-detalle { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: 16px; color: var(--tinta-suave); margin-top: 6px; }
+.fila .icono-final { color: var(--tinta-suave); flex-shrink: 0; }
+.fila-toca { border-color: var(--amarillo); box-shadow: inset 5px 0 0 var(--amarillo), var(--sombra-media); }
+
+.insignia { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: 999px; font-size: 15px; font-weight: 650; background: var(--hundido); color: var(--tinta-media); white-space: nowrap; }
+.insignia-amarilla { background: var(--amarillo); color: var(--sobre-amarillo); }
+.insignia-verde { background: var(--verde-suave); color: var(--verde); }
+.descargada { display: inline-flex; align-items: center; gap: 6px; color: var(--verde); font-weight: 600; }
+
+.avatar { width: 52px; height: 52px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 23px; font-weight: 800; color: var(--superficie); }
+
+/* ---------- Formularios ---------- */
+.formulario { display: flex; flex-direction: column; gap: 22px; }
+.campo-grupo { display: flex; flex-direction: column; }
+.etiqueta { display: block; font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.campo {
+  width: 100%; min-height: 56px; padding: 0 14px; font: inherit; font-size: 20px; color: var(--tinta);
+  background: var(--superficie); border: 1px solid var(--borde-fuerte); border-radius: 12px; box-shadow: inset 0 1px 2px hsl(35 30% 18% / 0.05);
+}
+textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resize: vertical; font-size: 19px; }
+.campo:focus { outline: none; border-color: var(--ocre); box-shadow: 0 0 0 3px hsl(43 100% 48% / 0.45); }
+.campo:disabled { background: var(--hundido); color: var(--tinta-suave); }
+.campo::placeholder { color: #9a917f; }
+.campo-codigo { font-family: var(--mono); font-size: 28px; letter-spacing: 0.18em; text-transform: uppercase; }
+.campo-pin { font-family: var(--mono); font-size: 28px; letter-spacing: 0.3em; }
+.campo-con-boton { display: flex; gap: 8px; }
+.campo-con-boton .campo { flex: 1; min-width: 0; }
+.pista { font-size: 16px; color: var(--tinta-suave); margin-top: 8px; }
+
+/* ---------- Avisos y estado ---------- */
+.aviso { margin: 16px 0; padding: 14px 16px; border-radius: 12px; border: 1px solid; font-size: 18px; }
+.aviso-error { background: var(--rojo-suave); border-color: #eec2bc; color: #8a2423; }
+.aviso-ok { background: var(--verde-suave); border-color: #bcdcc7; color: #0f5a37; }
+.aviso-atencion { background: var(--amarillo-suave); border-color: #ecd391; color: #5c3d00; }
+.aviso strong { display: block; font-size: 19px; }
+
+/* Barra de envío: una línea tranquila con un punto de color, no un bloque que asusta. */
+.estado {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 46px; padding: 8px 16px; font-size: 16px; font-weight: 600; color: var(--tinta-media);
+  background: var(--papel); border-bottom: 1px solid var(--borde);
+}
+.punto { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; background: var(--tinta-suave); }
+.estado-ok .punto { background: var(--verde); }
+.estado-pendiente .punto { background: var(--amarillo); box-shadow: 0 0 0 2px var(--amarillo-suave); }
+.estado-error .punto { background: var(--rojo); }
+.estado-enviando .punto { background: var(--amarillo); animation: latir 1s ease-in-out infinite; }
+
+.cargando { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 32px 0; text-align: center; font-size: 19px; color: var(--tinta-media); }
+.ruedita { width: 44px; height: 44px; border-radius: 50%; border: 5px solid var(--borde); border-top-color: var(--amarillo); animation: girar 0.9s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@keyframes latir { 50% { opacity: 0.35; } }
+
+/* ---------- Lección ---------- */
+.pasos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 22px 0 24px; }
+.paso { min-height: 48px; padding: 10px 2px 0; text-align: left; background: none; border: 0; border-top: 5px solid var(--borde); font-size: 16px; font-weight: 650; color: var(--tinta-suave); cursor: pointer; }
+.paso-hecho { border-top-color: var(--tinta-media); color: var(--tinta-media); }
+.paso-actual { border-top-color: var(--amarillo); color: var(--tinta); }
+.hoja { background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; box-shadow: var(--sombra-hoja); padding: 20px 20px 24px; }
+.hoja-texto { font-size: 21px; line-height: 1.7; white-space: pre-line; }
+.hoja-arriba { display: flex; justify-content: flex-end; margin: -6px -6px 12px 0; }
+.ejemplo-etiqueta { display: inline-block; margin-bottom: 10px; font-size: 16px; font-weight: 700; color: var(--ocre); }
+
+.pregunta-num { font-size: 16px; font-weight: 650; color: var(--tinta-suave); }
+.pregunta-texto { font-size: 25px; font-weight: 750; line-height: 1.25; letter-spacing: -0.015em; margin: 6px 0 18px; }
+.opciones { display: flex; flex-direction: column; gap: 10px; }
+.opcion {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 66px; padding: 12px 14px; text-align: left;
+  font-size: 19px; line-height: 1.3; background: var(--superficie); border: 2px solid var(--borde); border-radius: 14px; cursor: pointer;
+}
+.opcion:disabled { cursor: default; }
+.letra { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--borde-fuerte); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 17px; font-weight: 750; color: var(--tinta-media); background: var(--superficie); }
+.opcion-elegida { border-color: var(--ocre); background: var(--amarillo-suave); }
+.opcion-elegida .letra { background: var(--amarillo); border-color: var(--amarillo); color: var(--sobre-amarillo); }
+.opcion-buena { border-color: var(--verde); background: var(--verde-suave); }
+.opcion-buena .letra { background: var(--verde); border-color: var(--verde); color: #fff; }
+.opcion-mala { border-color: var(--rojo); background: var(--rojo-suave); }
+.opcion-mala .letra { background: var(--rojo); border-color: var(--rojo); color: #fff; }
+.opcion-apagada { opacity: 0.5; }
+
+.resultado { text-align: center; padding: 18px 0 8px; }
+.resultado-cifra { font-size: 68px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+.resultado-texto { font-size: 21px; color: var(--tinta-media); margin: 14px auto 28px; max-width: 22em; }
+
+/* Dudas: la pregunta del estudiante y, debajo, la respuesta con una raya amarilla al lado. */
+.duda + .duda { margin-top: 12px; }
+.duda-pregunta { font-size: 19px; font-weight: 700; line-height: 1.35; }
+.duda-respuesta { margin-top: 10px; padding-left: 12px; border-left: 4px solid var(--amarillo); font-size: 19px; line-height: 1.55; color: var(--tinta-media); }
+
+/* ---------- Profe ---------- */
+.codigo-clase { text-align: center; padding: 18px; background: var(--superficie); border: 1px dashed var(--borde-fuerte); border-radius: 14px; }
+.codigo-clase-texto { display: block; font-family: var(--mono); font-size: 44px; font-weight: 700; letter-spacing: 0.16em; margin-top: 4px; }
+.alumno-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--borde); }
+.alumno-fila:last-child { border-bottom: 0; }
+.fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.foto { padding: 8px; }
+.foto img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px; }
+.paso-profe { display: flex; align-items: baseline; gap: 10px; font-size: 21px; font-weight: 750; letter-spacing: -0.015em; margin-bottom: 12px; }
+.paso-profe-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: var(--tinta); color: var(--papel); font-size: 17px; flex-shrink: 0; }
+.opcion-editar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.opcion-editar input[type=radio] { width: 28px; height: 28px; flex-shrink: 0; accent-color: var(--verde); }
+.opcion-editar .campo { min-height: 50px; font-size: 18px; }
+.opcion-editar-buena .campo { border-color: var(--verde); box-shadow: 0 0 0 1px var(--verde); }
+.acciones-pie { position: sticky; bottom: 0; margin: 0 -16px; padding: 12px 16px 16px; background: var(--papel); border-top: 1px solid var(--borde); }
+
+/* index.css apaga todos los botones desactivados; las opciones ya contestadas tienen que verse bien. */
+.opcion:disabled { opacity: 1; cursor: default !important; }
+.opcion.opcion-apagada:disabled { opacity: 0.5; }

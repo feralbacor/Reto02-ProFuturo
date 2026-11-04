@@ -8,6 +8,7 @@ import random
 import re
 import secrets
 import sqlite3
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -62,6 +63,15 @@ CREATE TABLE IF NOT EXISTS pines_profe (
     clase TEXT PRIMARY KEY REFERENCES clases(codigo),
     sal TEXT NOT NULL,
     hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dudas (
+    id TEXT PRIMARY KEY,
+    alumno TEXT NOT NULL,
+    leccion_id TEXT NOT NULL,
+    pregunta TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    respuesta TEXT,
+    corregida INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS cuentas_alumno (
     alumno TEXT PRIMARY KEY REFERENCES alumnos(id),
@@ -210,7 +220,10 @@ PROMPT_LECCION = """Eres maestro de primaria. Con el TEXTO de abajo prepara una 
 - "titulo": corto y claro.
 - "lectura_facil": lo mismo que dice el texto, contado con frases cortas (15 palabras como mucho) y palabras sencillas. Entre 80 y 200 palabras. Usa solo información del texto, no añadas datos.
 - "explicacion_ejemplo": explica la idea principal con un ejemplo de la vida diaria (la casa, la escuela, el campo). De 2 a 4 frases. El ejemplo tiene que ser cierto y tener sentido.
-- "preguntas": 5 preguntas de opción múltiple, todas distintas entre sí, que se puedan contestar con el texto. Cada una con 4 opciones cortas y distintas, una sola correcta. "correcta" es la posición de la opción correcta (0, 1, 2 o 3). "porque" explica en una frase por qué es la correcta.
+- "preguntas": 5 preguntas, todas distintas entre sí, que se puedan contestar con el texto. Para cada una:
+  - "respuesta_correcta": la respuesta buena, corta, sacada del texto.
+  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.
+  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.
 
 TEXTO:
 <<<
@@ -229,13 +242,15 @@ ESQUEMA_LECCION = {
             "maxItems": 5,
             "items": {
                 "type": "object",
+                # La respuesta buena va como texto (y su porqué antes que las incorrectas): los modelos pequeños
+                # se equivocan al dar la posición de la buena, pero no al escribirla.
                 "properties": {
                     "pregunta": {"type": "string"},
-                    "opciones": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "string"}},
-                    "correcta": {"type": "integer", "enum": [0, 1, 2, 3]},
+                    "respuesta_correcta": {"type": "string"},
                     "porque": {"type": "string"},
+                    "incorrectas": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string"}},
                 },
-                "required": ["pregunta", "opciones", "correcta", "porque"],
+                "required": ["pregunta", "respuesta_correcta", "porque", "incorrectas"],
             },
         },
     },
@@ -322,6 +337,17 @@ def barajar_opciones(leccion):
     return leccion
 
 
+def juntar_opciones(leccion):
+    """De lo que da la IA (la buena y 3 incorrectas) a lo que guarda la app: 4 opciones y la posición de la buena."""
+    if isinstance(leccion, dict) and isinstance(leccion.get("preguntas"), list):
+        leccion["preguntas"] = [
+            {"pregunta": p.get("pregunta"), "opciones": [p.get("respuesta_correcta"), *p["incorrectas"]], "correcta": 0, "porque": p.get("porque", "")}
+            if isinstance(p, dict) and isinstance(p.get("incorrectas"), list) else p
+            for p in leccion["preguntas"]
+        ]
+    return leccion
+
+
 def crear_leccion_con_ia(texto):
     for _ in range(2):  # si sale mal, se intenta una vez más
         respuesta = preguntar_ia(PROMPT_LECCION.format(texto=texto), formato=ESQUEMA_LECCION, max_tokens=2500)
@@ -329,9 +355,63 @@ def crear_leccion_con_ia(texto):
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
             continue
+        leccion = juntar_opciones(leccion)
         if leccion_valida(leccion):
             return barajar_opciones(leccion)
     raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
+
+
+# ---------- Dudas («Tengo una duda») ----------
+# El estudiante pregunta sobre una lección, también sin conexión: la duda viaja con la sincronización, la IA
+# de este ordenador la contesta en un hilo aparte (solo con lo que dice la lección) y la respuesta vuelve en la siguiente.
+NO_ESTA = "Eso no está en esta lección. Pregúntaselo a tu profe."
+PROMPT_DUDA = """Eres el profe de un niño o una niña de 8 a 12 años. Te hace una pregunta sobre la LECCIÓN de abajo.
+- Contesta en español, en 1 a 3 frases cortas, con palabras sencillas, hablándole de tú.
+- Usa solo lo que dice la LECCIÓN. No inventes datos.
+- Si la respuesta no está en la LECCIÓN, o la pregunta no tiene que ver con ella, contesta exactamente: {no_esta}
+
+LECCIÓN:
+<<<
+{leccion}
+>>>
+
+PREGUNTA: {pregunta}"""
+
+
+def contestar_duda(contenido: dict, pregunta: str) -> str:
+    leccion = "\n\n".join(str(contenido.get(k, "")) for k in ("titulo", "lectura_facil", "explicacion_ejemplo"))
+    texto = preguntar_ia(PROMPT_DUDA.format(no_esta=NO_ESTA, leccion=leccion, pregunta=pregunta), max_tokens=200).strip()
+    # El modelo pequeño a veces copia solo el principio de la frase: siempre la misma, entera, para que el niño sepa qué hacer.
+    if not texto or texto.lower().startswith("eso no está en esta lección"):
+        return NO_ESTA
+    return texto[:600]
+
+
+AVISO_DUDAS = threading.Event()
+
+
+def contestar_dudas_pendientes():
+    """Contesta las dudas sin respuesta, una a una. Se despierta al llegar dudas y cada minuto (por si la IA estaba apagada)."""
+    while True:
+        AVISO_DUDAS.wait(timeout=60)
+        AVISO_DUDAS.clear()
+        try:
+            with closing(db()) as c:
+                pendientes = c.execute("""
+                    SELECT d.id, d.pregunta, l.contenido FROM dudas d JOIN lecciones l ON l.id = d.leccion_id
+                    WHERE d.respuesta IS NULL ORDER BY d.fecha
+                """).fetchall()
+            for d in pendientes:
+                if not ollama_disponible():
+                    break
+                respuesta = contestar_duda(json.loads(d["contenido"]), d["pregunta"])
+                with closing(db()) as c, c:
+                    c.execute("UPDATE dudas SET respuesta = ? WHERE id = ? AND respuesta IS NULL", (respuesta, d["id"]))
+        except Exception as e:  # que un fallo no pare el hilo: se reintenta en el siguiente aviso
+            print("dudas:", e)
+
+
+threading.Thread(target=contestar_dudas_pendientes, daemon=True).start()
 
 
 # ---------- Rutas ----------
@@ -390,10 +470,17 @@ def ver_clase(codigo: str):
             SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia
             FROM lecciones WHERE clase = ? ORDER BY fecha DESC
         """, (clase["codigo"],)).fetchall()
+        dudas = c.execute("""
+            SELECT d.id, a.nombre AS alumno, l.titulo AS leccion, d.pregunta, d.respuesta, d.corregida, d.fecha
+            FROM dudas d JOIN lecciones l ON l.id = d.leccion_id JOIN alumnos a ON a.id = d.alumno
+            JOIN matriculas m ON m.alumno = d.alumno AND m.clase = l.clase
+            WHERE l.clase = ? ORDER BY d.fecha DESC LIMIT 30
+        """, (clase["codigo"],)).fetchall()
     lecciones = [dict(l) for l in lecciones]
     return {
         **dict(clase),
         "alumnos": [dict(a) for a in alumnos],
+        "dudas": [dict(d) for d in dudas],
         "lecciones": lecciones,
         "materias": list(dict.fromkeys(l["materia"] for l in lecciones)),  # la más reciente primero
     }
@@ -471,6 +558,25 @@ def cambiar_contrasena(codigo: str, alumno_id: str, datos: NuevaContrasena):
     return {"ok": True}
 
 
+class CorregirDuda(BaseModel):
+    respuesta: str
+
+
+@app.put("/api/clases/{codigo}/dudas/{duda_id}", dependencies=SOLO_PROFE)
+def corregir_duda(codigo: str, duda_id: str, datos: CorregirDuda):
+    """El profe cambia la respuesta de una duda; al estudiante le llega en la siguiente sincronización."""
+    respuesta = datos.respuesta.strip()[:600]
+    if not respuesta:
+        raise HTTPException(400, "Escribe la respuesta.")
+    with closing(db()) as c, c:
+        clase = buscar_clase(c, codigo)
+        if not c.execute("SELECT 1 FROM dudas d JOIN lecciones l ON l.id = d.leccion_id WHERE d.id = ? AND l.clase = ?",
+                         (duda_id, clase["codigo"])).fetchone():
+            raise HTTPException(404, "Esa duda no es de esta clase.")
+        c.execute("UPDATE dudas SET respuesta = ?, corregida = 1 WHERE id = ?", (respuesta, duda_id))
+    return {"ok": True}
+
+
 class Unirse(BaseModel):
     alumno_id: str
 
@@ -515,31 +621,51 @@ class Sincronizar(BaseModel):
     # (no con el modelo), para que una mal formada no bloquee las demás para siempre.
     respuestas: list[dict] = []
     version: str | None = None  # la de las clases que ya tiene el móvil
+    dudas: list[dict] = []  # cada una: {id, alumno, leccion_id, pregunta, fecha}
+
+
+def es_uuid(v) -> bool:
+    return isinstance(v, str) and bool(re.fullmatch(r"[0-9a-f-]{36}", v))
+
+
+def es_fecha(v) -> bool:
+    try:
+        datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return True
+    except (AttributeError, ValueError):
+        return False
+
+
+def leccion_del_alumno(c, alumno: str, leccion_id: str):
+    """La lección, si está publicada en una clase del alumno."""
+    return c.execute("""
+        SELECT l.contenido FROM lecciones l JOIN matriculas m ON m.clase = l.clase AND m.alumno = ?
+        WHERE l.id = ? AND l.publicada = 1
+    """, (alumno, leccion_id)).fetchone()
 
 
 def respuesta_valida(c, r: dict) -> bool:
-    uuid_ok = lambda v: isinstance(v, str) and re.fullmatch(r"[0-9a-f-]{36}", v)
     entero = lambda v: isinstance(v, int) and not isinstance(v, bool)
-    if not (uuid_ok(r.get("id")) and uuid_ok(r.get("alumno")) and isinstance(r.get("leccion_id"), str)
-            and entero(r.get("pregunta")) and entero(r.get("respuesta")) and isinstance(r.get("fecha"), str)):
+    if not (es_uuid(r.get("id")) and es_uuid(r.get("alumno")) and isinstance(r.get("leccion_id"), str)
+            and entero(r.get("pregunta")) and entero(r.get("respuesta")) and es_fecha(r.get("fecha"))):
         return False
-    try:
-        datetime.fromisoformat(r["fecha"].replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    fila = c.execute("""
-        SELECT l.contenido FROM lecciones l JOIN matriculas m ON m.clase = l.clase AND m.alumno = ?
-        WHERE l.id = ? AND l.publicada = 1
-    """, (r["alumno"], r["leccion_id"])).fetchone()
+    fila = leccion_del_alumno(c, r["alumno"], r["leccion_id"])
     return bool(fila) and 0 <= r["pregunta"] < len(json.loads(fila["contenido"])["preguntas"]) and 0 <= r["respuesta"] <= 3
+
+
+def duda_valida(c, d: dict) -> bool:
+    return (es_uuid(d.get("id")) and es_uuid(d.get("alumno")) and isinstance(d.get("leccion_id"), str)
+            and isinstance(d.get("pregunta"), str) and 2 <= len(d["pregunta"].strip()) <= 300 and es_fecha(d.get("fecha"))
+            and bool(leccion_del_alumno(c, d["alumno"], d["leccion_id"])))
 
 
 @app.post("/api/sync")
 def sincronizar(datos: Sincronizar):
     """Recibe las respuestas que el móvil guardó sin conexión y le devuelve sus clases si han cambiado.
     Cada respuesta tiene su id: si llega dos veces, no se duplica."""
-    if len(datos.respuestas) > 5000:
+    if len(datos.respuestas) > 5000 or len(datos.dudas) > 200:
         raise HTTPException(413, "Demasiadas respuestas de una vez.")
+    hay_dudas_nuevas = False
     with closing(db()) as c, c:
         for r in datos.respuestas:
             if respuesta_valida(c, r):
@@ -547,13 +673,28 @@ def sincronizar(datos: Sincronizar):
                     "INSERT OR IGNORE INTO respuestas (id, alumno, leccion_id, pregunta, respuesta, fecha) VALUES (?, ?, ?, ?, ?, ?)",
                     (r["id"], r["alumno"], r["leccion_id"], r["pregunta"], r["respuesta"], r["fecha"]),
                 )
+        for d in datos.dudas:
+            if duda_valida(c, d):
+                hay_dudas_nuevas |= c.execute(
+                    "INSERT OR IGNORE INTO dudas (id, alumno, leccion_id, pregunta, fecha) VALUES (?, ?, ?, ?, ?)",
+                    (d["id"], d["alumno"], d["leccion_id"], d["pregunta"].strip(), d["fecha"]),
+                ).rowcount > 0
         clases = clases_del_alumno(c, datos.alumno_id)
+        dudas = c.execute("""
+            SELECT d.id, d.leccion_id, d.pregunta, d.respuesta, d.corregida, d.fecha FROM dudas d
+            JOIN lecciones l ON l.id = d.leccion_id JOIN matriculas m ON m.alumno = d.alumno AND m.clase = l.clase
+            WHERE d.alumno = ? ORDER BY d.fecha
+        """, (datos.alumno_id,)).fetchall()
+    if hay_dudas_nuevas:
+        AVISO_DUDAS.set()  # ya guardadas: que la IA se ponga a contestarlas
     version = hashlib.sha1(json.dumps(clases, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
     return {
         # Las no válidas también se dan por recibidas: si no, el móvil las reenviaría siempre.
         "recibidas": [r["id"] for r in datos.respuestas if isinstance(r.get("id"), str)],
         "version": version,
         "clases": None if version == datos.version else clases,  # si no ha cambiado nada, no se gastan datos
+        "dudas_recibidas": [d["id"] for d in datos.dudas if isinstance(d.get("id"), str)],
+        "dudas": [dict(d) for d in dudas],  # todas las suyas, con su respuesta si ya la tienen
     }
 
 

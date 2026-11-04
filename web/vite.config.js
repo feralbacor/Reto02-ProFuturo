@@ -12,8 +12,8 @@ export default defineConfig({
         name: 'Mochila',
         short_name: 'Mochila',
         description: 'Aprender sin conexión',
-        theme_color: '#2563eb',
-        background_color: '#ffffff',
+        theme_color: '#f5f1e8',
+        background_color: '#f5f1e8',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -33,6 +33,8 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['segundo-plano.js'], // sincronización con la app cerrada (lo pidió Fernando; es de Claude)
+        // La letra (Archivo, solo caracteres latinos: 35 KB) también se guarda, para que sin conexión se vea igual.
+        globPatterns: ['**/*.{js,css,html}', '**/archivo-latin-wght-normal-*.woff2'],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/i,
