@@ -1,5 +1,6 @@
 """Desde la raíz: api/.venv/bin/python docs/comprobar_panel.py. No cambia datos reales."""
 import os
+import json
 import asyncio
 import sqlite3
 import sys
@@ -25,6 +26,21 @@ async def borrar_por_api(codigo, alumno, pin=None):
                     'query_string': b'', 'root_path': '', 'server': ('test', 80), 'client': ('test', 1),
                     'headers': [] if pin is None else [(b'x-pin-profe', pin.encode())]}, recibir, enviar)
     return next(m['status'] for m in mensajes if m['type'] == 'http.response.start')
+
+
+async def sync_por_api(cuerpo):
+    datos = json.dumps(cuerpo).encode()
+    mensajes = []
+    async def recibir():
+        return {'type': 'http.request', 'body': datos, 'more_body': False}
+    async def enviar(mensaje):
+        mensajes.append(mensaje)
+    await main.app({'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
+                    'method': 'POST', 'scheme': 'http', 'path': '/api/sync', 'raw_path': b'/api/sync',
+                    'query_string': b'', 'root_path': '', 'server': ('test', 80), 'client': ('test', 1),
+                    'headers': [(b'content-type', b'application/json')]}, recibir, enviar)
+    estado = next(m['status'] for m in mensajes if m['type'] == 'http.response.start')
+    return estado, json.loads(b''.join(m.get('body', b'') for m in mensajes if m['type'] == 'http.response.body'))
 
 
 with tempfile.TemporaryDirectory() as carpeta:
@@ -99,6 +115,18 @@ with tempfile.TemporaryDirectory() as carpeta:
             assert c.execute('SELECT COUNT(*) FROM respuestas WHERE alumno = ?', (demo.identificador('alumno-1'),)).fetchone()[0] == 10
         assert main.entrar_alumno(main.Entrar(usuario='aula23ana', contrasena='1234'))['id'] == ana
         assert not any(a['id'] == ana for a in panel.panel('AULA23')['alumnos'])
+        # Tras la baja, POST /api/sync no reinserta y confirma recepción para vaciar la cola.
+        momento = datetime.now().isoformat()
+        def nueva(id_, alumno):
+            return {'id': id_, 'alumno': alumno, 'leccion_id': leccion, 'pregunta': 0, 'respuesta': 0, 'fecha': momento}
+        baja_id, control_id = '00000000-0000-4000-8000-00000000000a', '00000000-0000-4000-8000-00000000000b'
+        estado, cuerpo = asyncio.run(sync_por_api({'alumno_id': ana, 'respuestas': [
+            nueva(baja_id, ana), nueva(control_id, demo.identificador('alumno-1'))]}))
+        assert estado == 200 and {baja_id, control_id} <= set(cuerpo['recibidas'])
+        with sqlite3.connect(panel.DB_PATH) as c:
+            assert not c.execute('SELECT 1 FROM respuestas WHERE id = ?', (baja_id,)).fetchone()
+            assert c.execute('SELECT 1 FROM respuestas WHERE id = ?', (control_id,)).fetchone()  # control: el cuerpo es válido
+            assert not c.execute('SELECT 1 FROM matriculas WHERE clase = ? AND alumno = ?', ('AULA23', ana)).fetchone()
     finally:
         main.DB_PATH = original
-print('Panel correcto: notas, baja con PIN, aislamiento, cuenta conservada, rollback y 404.')
+print('Panel correcto: notas, baja con PIN, aislamiento, cuenta conservada, rollback, 404 y sincronización tras la baja.')
