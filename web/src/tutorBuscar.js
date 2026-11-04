@@ -12,10 +12,15 @@ function sinTildes(texto) {
 }
 
 // «plantas», «planta» y «plantar» comparten raíz: basta con las 5 primeras letras.
+// «llueve», «lluvia» y «llover» cambian las vocales: también cuentan sus consonantes («~llv»), si son al menos 3.
 export function raices(texto) {
   return [...new Set(sinTildes(texto).split(/[^a-zñ0-9]+/)
     .filter(p => p.length > 2 && !VACIAS.has(p))
-    .map(p => p.slice(0, 5)))]
+    .flatMap(p => {
+      const raiz = p.slice(0, 5)
+      const consonantes = raiz[0] + raiz.slice(1).replace(/[aeiou]/g, '')
+      return consonantes.length >= 3 ? [raiz, `~${consonantes}`] : [raiz]
+    }))]
 }
 
 // Parte la lección en frases, recordando de qué pestaña viene cada una.
