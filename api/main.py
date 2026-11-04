@@ -3,6 +3,8 @@ import base64
 import binascii
 import hashlib
 import hmac
+import html
+import io
 import json
 import os
 import random
@@ -14,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
 from contextlib import closing
 from datetime import datetime
 
@@ -823,6 +826,65 @@ def leer_foto(codigo: str, foto: Foto):
     if not texto or texto.upper().startswith("SIN TEXTO"):
         raise HTTPException(422, "No se lee texto en la foto. Hazla de frente, con buena luz y con la página entera.")
     return {"texto": texto}
+
+
+class Archivo(BaseModel):
+    archivo: str  # el archivo en base64 (vale con o sin «data:...;base64,»)
+
+
+NO_SE_LEE = "Este archivo no se puede leer. Usa fotos, PDF, Word, PowerPoint, LibreOffice o texto."
+
+
+def texto_de_xml(xml: str) -> str:
+    xml = re.sub(r"<(?:w:br|w:tab|text:line-break|text:tab)\b[^>]*/>", " ", xml)
+    xml = re.sub(r"</(?:w:p|a:p|text:p|text:h)>", "\n", xml)  # fin de párrafo en Word, PowerPoint y LibreOffice
+    return html.unescape(re.sub(r"<[^>]+>", "", xml))
+
+
+def texto_de_archivo(crudo: bytes) -> str:
+    """Saca el texto de un PDF, Word (.docx), PowerPoint (.pptx), LibreOffice (.odt/.odp) o texto plano."""
+    if crudo[:5] == b"%PDF-":
+        try:
+            from pypdf import PdfReader  # solo hace falta para los PDF
+        except ImportError:
+            raise HTTPException(503, "Para leer PDF falta pypdf en el ordenador de la clase (pip install pypdf).")
+        try:
+            return "\n\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(crudo)).pages[:40])
+        except Exception:
+            raise HTTPException(422, "No se puede abrir el PDF. Prueba con otro o haz fotos de sus páginas.")
+    if crudo[:2] == b"PK":
+        try:
+            z = zipfile.ZipFile(io.BytesIO(crudo))
+            nombres = z.namelist()
+            partes = (["word/document.xml"] if "word/document.xml" in nombres
+                      else sorted((n for n in nombres if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)), key=lambda n: int(re.sub(r"\D", "", n)))
+                      or (["content.xml"] if "content.xml" in nombres else []))
+            if not partes or sum(z.getinfo(n).file_size for n in partes) > 50_000_000:
+                raise HTTPException(415, NO_SE_LEE)
+            return "\n\n".join(texto_de_xml(z.read(n).decode("utf-8", "replace")) for n in partes)
+        except (zipfile.BadZipFile, KeyError):
+            raise HTTPException(415, NO_SE_LEE)
+    try:
+        texto = crudo.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(415, NO_SE_LEE)
+    return texto_de_xml(texto) if texto.lstrip()[:1] == "<" else texto  # HTML: solo el texto
+
+
+@app.post("/api/clases/{codigo}/leer-archivo", dependencies=SOLO_PROFE)
+def leer_archivo(codigo: str, datos: Archivo):
+    b64 = datos.archivo.split(",", 1)[-1]
+    if len(b64) > 14_000_000:
+        raise HTTPException(413, "El archivo es demasiado grande: como mucho 10 MB.")
+    try:
+        crudo = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(400, "No se ha podido abrir el archivo. Prueba con otro.")
+    texto = re.sub(r"[ \t\xa0]+", " ", texto_de_archivo(crudo))
+    texto = re.sub(r"\s*\n\s*\n\s*", "\n\n", texto).strip()
+    if len(texto) < 20:
+        raise HTTPException(422, "No encuentro texto en el archivo. Si es un PDF escaneado, haz fotos de sus páginas.")
+    return {"texto": texto[:20000]}
 
 
 class NuevaLeccion(BaseModel):

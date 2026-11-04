@@ -64,3 +64,48 @@ sin_titulo = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": Non
 assert sin_titulo["leccion"]["titulo"] == "Las plantas"
 assert {l["titulo"] for l in api.get(f"/api/clases/{suya}", headers=sesion).json()["lecciones"]} == {"Las plantas", "Mi título"}
 print("Título de la lección: todo bien")
+
+# Archivos: Word, PowerPoint (en orden de diapositiva), LibreOffice, texto y PDF; lo demás, un aviso claro.
+import base64  # noqa: E402
+import io  # noqa: E402
+import zipfile  # noqa: E402
+
+
+def zip_con(partes):
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for nombre, xml in partes.items():
+            z.writestr(nombre, xml)
+    return b.getvalue()
+
+
+def leer(crudo):
+    return api.post(f"/api/clases/{suya}/leer-archivo", json={"archivo": "data:x;base64," + base64.b64encode(crudo).decode()}, headers=sesion)
+
+
+frase = "El agua se evapora, forma nubes y cae como lluvia."
+assert leer(zip_con({"word/document.xml": f"<w:p><w:r><w:t>El ciclo &amp; el agua</w:t></w:r></w:p><w:p><w:t>{frase}</w:t></w:p>"})).json()["texto"] == f"El ciclo & el agua\n{frase}"
+diapos = zip_con({"ppt/slides/slide10.xml": f"<a:p><a:t>Diez {frase}</a:t></a:p>", "ppt/slides/slide2.xml": f"<a:p><a:t>Dos {frase}</a:t></a:p>"})
+assert leer(diapos).json()["texto"].startswith("Dos")
+assert frase in leer(zip_con({"content.xml": f"<text:p>{frase}</text:p>"})).json()["texto"]
+assert leer(f"# Apuntes\n\n{frase}".encode()).json()["texto"] == f"# Apuntes\n\n{frase}"
+assert leer(zip_con({"otra/cosa.xml": "<a/>"})).status_code == 415
+assert leer(bytes(range(256)) * 10).status_code == 415
+assert leer(b"corto").status_code == 422
+# Un PDF de una página con una frase (hecho a mano: así la prueba no necesita más librerías).
+flujo = f"BT /F1 12 Tf 72 720 Td ({frase}) Tj ET".encode()
+objetos = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+           b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+           b"<</Length %d>>stream\n" % len(flujo) + flujo + b"\nendstream", b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"]
+pdf, posiciones = b"%PDF-1.4\n", []
+for i, o in enumerate(objetos, 1):
+    posiciones.append(len(pdf))
+    pdf += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+xref = len(pdf)
+pdf += b"xref\n0 6\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % p for p in posiciones)
+pdf += b"trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % xref
+r = leer(pdf)
+assert r.status_code in (200, 503), r.text  # 503: falta pypdf en este ordenador
+if r.status_code == 200:
+    assert r.json()["texto"] == frase, r.json()
+print("Leer archivos: todo bien" + ("" if r.status_code == 200 else " (sin probar PDF: falta pypdf)"))

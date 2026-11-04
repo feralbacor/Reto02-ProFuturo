@@ -88,10 +88,23 @@ function usePendientesProfe() {
 // Errores que se arreglan solos (sin red, IA apagada u ocupada): se vuelve a probar más tarde.
 const esPasajero = (e) => e.message === SIN_CONEXION || !e.estado || e.estado >= 500 || e.estado === 429
 
-// Lee las fotos que falten y prepara la lección. Tras cada foto llama a alAvanzar con lo que lleva, para no repetirla.
+// Las fotos las lee la IA; los PDF, Word, PowerPoint… los abre la API y saca su texto.
+const esImagen = (datos) => datos.startsWith('data:image/')
+const leerAdjunto = (codigo, datos) => esImagen(datos)
+  ? api(`/api/clases/${encodeURIComponent(codigo)}/leer-foto`, { method: 'POST', body: { imagen: datos } })
+  : api(`/api/clases/${encodeURIComponent(codigo)}/leer-archivo`, { method: 'POST', body: { archivo: datos } })
+
+const leerComoDatos = (archivo) => new Promise((resolve, reject) => {
+  const lector = new FileReader()
+  lector.onload = () => resolve(lector.result)
+  lector.onerror = () => reject(new Error(`No se puede abrir «${archivo.name}».`))
+  lector.readAsDataURL(archivo)
+})
+
+// Lee las fotos y archivos que falten y prepara la lección. Tras cada foto llama a alAvanzar con lo que lleva, para no repetirla.
 async function prepararLeccion(item, alAvanzar) {
   while (item.fotos.length) {
-    const r = await api(`/api/clases/${encodeURIComponent(item.codigo)}/leer-foto`, { method: 'POST', body: { imagen: item.fotos[0] } })
+    const r = await leerAdjunto(item.codigo, item.fotos[0])
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
@@ -436,7 +449,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
-                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto', 'fotos') : 'texto'}</p>
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto o archivo', 'fotos o archivos') : 'texto'}</p>
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || 'Sin texto todavía'}</p>
                 {p.error && <Aviso texto={`No se ha podido preparar: ${p.error}`} />}
                 <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Quitar</button>
@@ -517,6 +530,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const [error, setError] = useState('')
   const camara = useRef(null)
   const galeria = useRef(null)
+  const documento = useRef(null)
   const [materia, setMateria] = useState('')
   const [titulo, setTitulo] = useState('')
   const [materias, setMaterias] = useState([])
@@ -534,7 +548,15 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     setError('')
     for (const archivo of Array.from(archivos || [])) {
       try {
-        const datos = await reducirFoto(archivo)
+        if (archivo.type.startsWith('text/plain') || /\.(txt|md|csv)$/i.test(archivo.name)) {
+          // Un texto se pone directamente en el paso 3 (también sin conexión).
+          const leido = (await archivo.text()).trim()
+          setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + leido)
+          setLeidas(true)
+          continue
+        }
+        if (!archivo.type.startsWith('image/') && archivo.size > 10 * 1024 * 1024) throw new Error(`«${archivo.name}» pesa demasiado: como mucho 10 MB.`)
+        const datos = archivo.type.startsWith('image/') ? await reducirFoto(archivo) : await leerComoDatos(archivo)
         setFotos(f => f.length >= MAX_FOTOS ? f : [...f, { id: nuevoId(), nombre: archivo.name, datos }])
       } catch (e) {
         setError(e.message)
@@ -553,8 +575,9 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
     const lista = fotos
     try {
       for (let i = 0; i < lista.length; i++) {
-        setOcupado(lista.length > 1 ? `Leyendo la foto ${i + 1} de ${lista.length}…` : 'Leyendo la foto…')
-        const r = await api(`/api/clases/${encodeURIComponent(codigo)}/leer-foto`, { method: 'POST', body: { imagen: lista[i].datos } })
+        const que = esImagen(lista[i].datos) ? 'la foto' : `«${lista[i].nombre}»`
+        setOcupado(lista.length > 1 ? `Leyendo ${que} (${i + 1} de ${lista.length})…` : `Leyendo ${que}…`)
+        const r = await leerAdjunto(codigo, lista[i].datos)
         setTexto(t => (t.trim() ? t.trim() + '\n\n' : '') + r.texto)
         setFotos(f => f.filter(x => x.id !== lista[i].id))
         setLeidas(true)
@@ -569,7 +592,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(fotos.length ? 'Leyendo las fotos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
+    setOcupado(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
     let item = { id: nuevoId(), codigo, texto, materia, titulo, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
@@ -605,7 +628,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       <h1 className="titulo">Nueva lección</h1>
       <p className="frase">Haz una foto a una página del libro. Mochila la lee y prepara una lectura fácil, un ejemplo y 5 preguntas. Tú la revisas antes de publicarla.</p>
       {ia === 'apagada' && (
-        <p className="aviso aviso-atencion"><strong>La lectura de fotos está apagada</strong>Enciende Ollama en el ordenador de la clase. Mientras, puedes escribir o pegar el texto.</p>
+        <p className="aviso aviso-atencion"><strong>La lectura de fotos está apagada</strong>Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.</p>
       )}
 
       <section className="seccion">
@@ -616,27 +639,33 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>Las fotos de la página</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>Las fotos o los archivos</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />Hacer una foto</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />Elegir fotos</button>
+          <button onClick={() => documento.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="archivo" />Subir un archivo</button>
         </div>
-        <p className="pista">Hasta {MAX_FOTOS} fotos. Que se vea la página entera y con buena luz.</p>
+        <p className="pista">Hasta {MAX_FOTOS}. Fotos de la página (que se vea entera y con buena luz), o un PDF, Word, PowerPoint, LibreOffice o texto.</p>
         <input ref={camara} type="file" accept="image/*" capture="environment" onChange={alElegir} hidden />
         <input ref={galeria} type="file" accept="image/*" multiple onChange={alElegir} hidden />
+        <input ref={documento} type="file" multiple onChange={alElegir} hidden
+          accept=".pdf,.docx,.pptx,.odt,.odp,.txt,.md,.csv,.html,.htm,image/*,application/pdf,text/*" />
 
         {fotos.length > 0 && (
           <>
             <div className="fotos" style={{ marginTop: 16 }}>
               {fotos.map((f, i) => (
                 <div key={f.id} className="tarjeta foto">
-                  <img src={f.datos} alt={`Foto ${i + 1}`} />
+                  {esImagen(f.datos)
+                    ? <img src={f.datos} alt={`Foto ${i + 1}`} />
+                    : <p className="fila-titulo" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 4px', wordBreak: 'break-word' }}><Icono nombre="archivo" />{f.nombre}</p>}
                   <button onClick={() => setFotos(fs => fs.filter(x => x.id !== f.id))} disabled={!!ocupado} className="boton boton-fantasma boton-ancho">Quitar</button>
                 </div>
               ))}
             </div>
             <button onClick={leerFotos} disabled={!!ocupado} className="boton boton-principal boton-ancho" style={{ marginTop: 16 }}>
-              Leer {fotos.length === 1 ? 'la foto' : `las ${fotos.length} fotos`}
+              {!fotos.every(f => esImagen(f.datos)) ? `Leer ${fotos.length === 1 ? 'el archivo' : `los ${fotos.length} archivos`}`
+                : `Leer ${fotos.length === 1 ? 'la foto' : `las ${fotos.length} fotos`}`}
             </button>
           </>
         )}
@@ -646,7 +675,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
       <section className="seccion">
         <h2 className="paso-profe"><span className="paso-profe-num">3</span>{leidas ? 'Revisa el texto' : 'El texto'}</h2>
         <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
-          {leidas ? 'Esto es lo que pone en las fotos. Corrige lo que haga falta.' : 'Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.'}
+          {leidas ? 'Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.' : 'Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.'}
         </label>
         <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
           placeholder="El texto de la página del libro…" />
