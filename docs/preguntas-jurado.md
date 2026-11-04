@@ -56,7 +56,7 @@ No. El modelo qwen3-vl:4b-instruct, de unos 3,3 GB, se ejecuta en el ordenador d
 
 ## ¿Qué precisión y velocidad habéis medido?
 
-El equipo informa de 185 palabras recuperadas de 185 en una foto realista y 184 de 185 en una muy mala, sin palabras inventadas en esas dos pruebas. La generación de una lección tardó unos 45 segundos y una foto reducida ocupó unos 110 KB. Son ejemplos medidos, no garantías para otras imágenes o equipos; la transcripción y la lección siempre se revisan.
+El equipo informa de 185 palabras recuperadas de 185 en una foto realista y 184 de 185 en una muy mala, sin palabras inventadas en esas dos pruebas. Una generación anterior tardó unos 45 segundos; después Claude probó la generación en francés de la API multilingüe en 103 segundos. Una foto reducida ocupó unos 110 KB. Son ejemplos medidos, no garantías para otras imágenes o equipos; la transcripción y la lección siempre se revisan.
 
 ## ¿Cómo evitáis que la IA enseñe algo incorrecto?
 
@@ -114,4 +114,4 @@ El francés y el inglés están revisados por el equipo. Las demás traducciones
 
 ## ¿Cambiar de idioma traduce también el libro y la voz?
 
-El selector de portada cambia la interfaz. En «Nueva lección», el profe elige aparte el idioma del contenido en el paso 4. La API aún debe incorporar y probar esa generación: las lecciones de francés e inglés de la demo ya están escritas manualmente. «Escuchar» utiliza el idioma guardado de la lección; sin red requiere una voz local de ese idioma. Una lengua disponible en pantalla no garantiza una voz instalada ni calidad de traducción certificada.
+El selector de portada cambia la interfaz. En «Nueva lección», el profe elige aparte el idioma del contenido en el paso 4. La API ya prepara el contenido en el idioma elegido, aunque el libro esté en otra lengua, y las dudas se contestan en el idioma de la lección. Claude probó la generación en francés en 103 s; no es un tiempo garantizado. Las lecciones fr/en de la demo siguen siendo ejemplos escritos manualmente. «Escuchar» utiliza el idioma guardado de la lección; sin red requiere una voz local de ese idioma. Una lengua disponible en pantalla no garantiza una voz instalada ni calidad de traducción certificada.

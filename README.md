@@ -12,7 +12,7 @@ La IA corre en el ordenador de la clase con **Ollama y qwen3-vl:4b-instruct**, s
 
 La portada permite elegir entre 23 idiomas, con francés e inglés primero; el árabe utiliza escritura de derecha a izquierda. Cambiar el idioma de la interfaz no traduce automáticamente una lección que ya existe.
 
-El profe elige «El idioma de la lección» en el paso 4 de «Nueva lección». La voz de «Escuchar» utiliza el idioma guardado dentro de esa lección; para escuchar sin red debe haber una voz local compatible instalada. La generación desde la API en el idioma solicitado sigue pendiente del cambio de Claude; comprobar ese recorrido antes de prometerlo. Las dos lecciones fr/en de AULA23 ya están escritas manualmente.
+El profe elige «El idioma de la lección» en el paso 4 de «Nueva lección». La voz de «Escuchar» utiliza el idioma guardado dentro de esa lección; para escuchar sin red debe haber una voz local compatible instalada. La API ya prepara el contenido en el idioma solicitado, aunque el texto de origen esté en otro idioma. Las dudas se contestan en el idioma de la lección. Claude probó una generación en francés en 103 s con la IA del aula; es una medición de ese equipo, no un plazo garantizado. Las dos lecciones fr/en de AULA23 ya están escritas manualmente.
 
 Francés e inglés están revisados por el equipo. Las otras traducciones son borradores automáticos y requieren revisión con hablantes nativos antes de usarlas en una escuela. Si falta un texto, se intenta mostrar en inglés y, si tampoco está, se conserva el español.
 
