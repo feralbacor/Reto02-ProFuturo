@@ -863,6 +863,7 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [progreso, setProgreso] = useState(() => leer(clave('progreso'), {})) // { leccion_id: { empezada, hecha, aciertos, total } }
   const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
   const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
+  const [dudasQuitadas, setDudasQuitadas] = useState(() => leer(clave('dudas-quitadas'), [])) // las que el estudiante ya no quiere ver
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -975,10 +976,20 @@ function AlumnoCasa({ alumno, onSalir }) {
     setDudasCola(cola)
     sincronizar()
   }
+  // Si aún no se ha enviado, ya no se envía. Si ya se envió, deja de verse en este móvil (el profe la sigue viendo).
+  const quitarDuda = (id) => {
+    const cola = leer('dudas-pendientes', []).filter(d => d.id !== id)
+    guardar('dudas-pendientes', cola)
+    setDudasCola(cola)
+    const quitadas = [...dudasQuitadas, id]
+    guardar(clave('dudas-quitadas'), quitadas)
+    setDudasQuitadas(quitadas)
+  }
   const dudasDe = (leccionId) => {
     const delServidor = dudas.filter(d => d.leccion_id === leccionId)
     const ids = new Set(delServidor.map(d => d.id))
     return [...delServidor, ...dudasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id))]
+      .filter(d => !dudasQuitadas.includes(d.id))
   }
 
   if (otraClase) {
@@ -993,7 +1004,7 @@ function AlumnoCasa({ alumno, onSalir }) {
         <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
           onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
           onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
-          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} />
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} onQuitar={quitarDuda} />
       </>
     )
   }
@@ -1101,7 +1112,7 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
 }
 
 // La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar }) {
+function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar, onQuitar }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
   const [paso, setPaso] = useState(0)
   const [n, setN] = useState(0)
@@ -1164,7 +1175,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
           <button onClick={() => irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
             {paso === 0 ? 'Ya lo he leído' : 'Ir a las preguntas'}<Icono nombre="seguir" />
           </button>
-          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} />
+          <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>
       )}
 
@@ -1181,7 +1192,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">Volver a leer</button>
           </div>
           <p className="nota">Tus respuestas le llegan a tu profe cuando hay conexión.</p>
-          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} /></div>
+          <div style={{ textAlign: 'left' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} /></div>
         </div>
       )}
 
@@ -1234,7 +1245,7 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
 
 // «Tengo una duda»: la pregunta se guarda en el móvil y se envía al sincronizar; la contesta la IA del ordenador
 // de la clase solo con lo que dice la lección, y el profe la ve (y puede cambiar la respuesta).
-function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
+function Dudas({ dudas, contenido, sinConexion, onPreguntar, onQuitar }) {
   const [abierta, setAbierta] = useState(false)
   const [texto, setTexto] = useState('')
   const campo = useRef(null)
@@ -1255,11 +1266,15 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
           <h2 className="seccion-titulo">Mis dudas</h2>
           <div style={{ marginBottom: 16 }}>
             {dudas.map(d => (
-              <div key={d.id} className="tarjeta duda">
-                <p className="duda-pregunta">{d.pregunta}</p>
+              <div key={d.id} className="tarjeta duda" style={{ position: 'relative' }}>
+                <button onClick={() => window.confirm('¿Borrar esta duda?') && onQuitar(d.id)} aria-label="Borrar esta duda"
+                  style={{ position: 'absolute', top: 6, right: 6, width: 40, height: 40, display: 'grid', placeItems: 'center', background: 'none', border: 0, color: 'var(--tinta-suave)', cursor: 'pointer' }}>
+                  <Icono nombre="mal" tam={18} />
+                </button>
+                <p className="duda-pregunta" style={{ paddingRight: 30 }}>{d.pregunta}</p>
                 {d.respuesta
                   ? <><p className="duda-respuesta">{d.respuesta}{d.corregida ? <span className="nota" style={{ display: 'block' }}>Te lo ha contestado tu profe.</span> : null}</p><div style={{ marginTop: 10 }}><Escuchar texto={d.respuesta} /></div></>
-                  : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? 'Se enviará cuando haya conexión.' : 'Esperando la respuesta…'} />}
+                  : <EnLaLeccion contenido={contenido} pregunta={d.pregunta} nota={sinConexion ? 'La IA de tu clase te contestará cuando haya conexión.' : 'Esperando la respuesta de la IA de tu clase…'} />}
               </div>
             ))}
           </div>
@@ -1294,12 +1309,12 @@ function Dudas({ dudas, contenido, sinConexion, onPreguntar }) {
 // Opcional: el ayudante entiende la duda aunque no use las palabras de la lección. Se descarga una vez y va sin red.
 function Ayudante({ sinConexion }) {
   const { estado, progreso } = useAyudante()
-  if (estado === 'listo') return <p className="nota" style={{ marginTop: 14 }}>Ayudante descargado: entiende tus dudas aunque uses otras palabras.</p>
+  if (estado === 'listo') return <p className="nota" style={{ marginTop: 14 }}>Ayudante descargado: busca en la lección aunque uses otras palabras, también sin conexión.</p>
   if (estado === 'descargando') return <p className="nota" style={{ marginTop: 14 }} role="status">Descargando el ayudante… {progreso} %</p>
   return (
     <div style={{ marginTop: 18 }}>
       <p className="nota">{estado === 'error' ? 'No se ha podido descargar el ayudante. Prueba otra vez con conexión.'
-        : '¿Quieres que Mochila entienda mejor tus dudas? Descarga el ayudante una vez y funcionará sin conexión. Mejor con wifi.'}</p>
+        : '¿Quieres que Mochila busque mejor tus dudas en la lección? Descarga el ayudante una vez y funcionará sin conexión. Mejor con wifi.'}</p>
       <button onClick={descargar} disabled={sinConexion} className="boton boton-fantasma boton-ancho">Descargar ayudante (150 MB)</button>
     </div>
   )
