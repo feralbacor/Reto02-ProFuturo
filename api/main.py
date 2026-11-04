@@ -828,6 +828,7 @@ def leer_foto(codigo: str, foto: Foto):
 class NuevaLeccion(BaseModel):
     texto: str
     materia: str = ""
+    titulo: str = ""  # si el profe lo escribe, se usa este; si no, el que pone la IA
     id: str | None = None  # la pone el móvil del profe: si la envía dos veces (sin conexión), no se duplica
 
 
@@ -844,6 +845,8 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
     if hecha:
         return {"id": datos.id, "leccion": json.loads(hecha["contenido"])}
     leccion = crear_leccion_con_ia(texto[:8000])
+    if " ".join(datos.titulo.split()):
+        leccion["titulo"] = " ".join(datos.titulo.split())[:120]
     leccion_id = datos.id or str(uuid.uuid4())
     with closing(db()) as c, c:
         leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)

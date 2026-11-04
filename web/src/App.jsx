@@ -94,7 +94,7 @@ async function prepararLeccion(item, alAvanzar) {
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', id: item.id } })
 }
 
 let preparandoPendientes = false
@@ -435,7 +435,7 @@ function ProfeClase({ codigo, onVolver, onNueva, onNotas, onEditar }) {
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
-                <p className="fila-titulo" style={{ margin: 0 }}>{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto', 'fotos') : 'texto'}</p>
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{p.materia || 'General'} · {p.fotos.length ? plural(p.fotos.length, 'foto', 'fotos') : 'texto'}</p>
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || 'Sin texto todavía'}</p>
                 {p.error && <Aviso texto={`No se ha podido preparar: ${p.error}`} />}
                 <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>Quitar</button>
@@ -517,6 +517,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const camara = useRef(null)
   const galeria = useRef(null)
   const [materia, setMateria] = useState('')
+  const [titulo, setTitulo] = useState('')
   const [materias, setMaterias] = useState([])
   const [ia, setIa] = useState(null)
 
@@ -568,7 +569,7 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
   const crear = async () => {
     setError('')
     setOcupado(fotos.length ? 'Leyendo las fotos y preparando la lección…' : 'Preparando la lección… Tarda alrededor de un minuto.')
-    let item = { id: nuevoId(), codigo, texto, materia, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
+    let item = { id: nuevoId(), codigo, texto, materia, titulo, fotos: fotos.map(f => f.datos), fecha: new Date().toISOString() }
     try {
       const r = await prepararLeccion(item, (i) => { item = i })
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
@@ -649,6 +650,13 @@ function ProfeNuevaLeccion({ codigo, onVolver, onCreada }) {
         <input id="materia" className="campo" list="materias-clase" value={materia} onChange={e => setMateria(e.target.value)} maxLength={40}
           placeholder="Por ejemplo: Ciencias" disabled={!!ocupado} aria-label="Materia" />
         <datalist id="materias-clase">{materias.map(m => <option key={m} value={m} />)}</datalist>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">4</span><label htmlFor="titulo-leccion">El título</label></h2>
+        <input id="titulo-leccion" className="campo" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120}
+          placeholder="Por ejemplo: Las ecuaciones" disabled={!!ocupado} />
+        <p className="pista">Si lo dejas vacío, Mochila le pone uno.</p>
       </section>
 
       <Aviso texto={error} />

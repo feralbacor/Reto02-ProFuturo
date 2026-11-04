@@ -56,3 +56,11 @@ assert api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": "x"}, hea
 clase = api.get(f"/api/clases/{suya}", headers=sesion).json()
 assert [l["contenido"]["titulo"] for l in clase["lecciones"]] == ["Las plantas"]
 print("Lecciones del profe sin conexión: todo bien")
+
+# El título: el que escribe el profe; si lo deja vacío, el de la IA.
+con_titulo = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titulo": "  Mi   título "}, headers=sesion).json()
+assert con_titulo["leccion"]["titulo"] == "Mi título"
+sin_titulo = api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "titulo": "   "}, headers=sesion).json()
+assert sin_titulo["leccion"]["titulo"] == "Las plantas"
+assert {l["titulo"] for l in api.get(f"/api/clases/{suya}", headers=sesion).json()["lecciones"]} == {"Las plantas", "Mi título"}
+print("Título de la lección: todo bien")
