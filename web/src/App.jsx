@@ -91,13 +91,14 @@ function App() {
     return () => { clearInterval(t); window.removeEventListener('online', comprobar) }
   }, [comprobar])
 
-  if (vista === 'profe') return <VistaProfe onVolver={() => setVista('inicio')} />
-  if (vista === 'alumno') return <VistaAlumno onVolver={() => setVista('inicio')} />
+  if (vista === 'profe') return <><VistaProfe onVolver={() => setVista('inicio')} /><Creadores /></>
+  if (vista === 'alumno') return <><VistaAlumno onVolver={() => setVista('inicio')} /><Creadores /></>
 
   return (
+    <>
     <div className="pagina">
       <header className="cabecera">
-        <span className="marca">Mochila</span>
+        <span className="marca"><img src="/favicon.svg" alt="" className="marca-logo" />Mochila</span>
         <select aria-label="Idioma · Language · Langue" className="campo selector-idioma" value={lengua}
           onChange={e => { cambiarIdioma(e.target.value); setLengua(e.target.value) }}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
@@ -133,7 +134,14 @@ function App() {
         </p>
       )}
     </div>
+    <Creadores />
+    </>
   )
+}
+
+// Al final de todas las pantallas: quiénes hemos hecho Mochila.
+function Creadores() {
+  return <footer className="creadores">© 2026 <strong>MaestrIA</strong></footer>
 }
 
 // ---------- Profe ----------

@@ -46,6 +46,12 @@ img { max-width: 100%; display: block; }
 .pagina { max-width: 640px; margin: 0 auto; padding: 12px 16px 72px; }
 .cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin-bottom: 12px; }
 .marca { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+.marca:has(.marca-logo) { display: inline-flex; align-items: center; gap: 10px; }
+.marca-logo { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+/* «© MaestrIA» abajo del todo: la pantalla ocupa como mínimo todo el alto y el pie va al final, aunque haya poco contenido */
+#root { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+#root > .pagina { width: 100%; }
+.creadores { margin-top: auto; padding: 0 16px 20px; text-align: center; font-size: 15px; color: var(--tinta-suave); }
 .titulo { font-size: clamp(30px, 8.4vw, 40px); font-weight: 800; line-height: 1.04; letter-spacing: -0.035em; overflow-wrap: anywhere; }
 .titulo-con-avatar { display: flex; align-items: center; gap: 14px; }
 .frase { font-size: 19px; color: var(--tinta-media); margin-top: 10px; max-width: 32em; }
