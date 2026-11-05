@@ -84,8 +84,8 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 
 **API**
 - Ruta nueva: `POST /api/clases/{codigo}/leer-archivo` con `{archivo}` (en base64) → `{texto}`. Solo el profe, como `leer-foto`.
-- El tipo se sabe por el contenido, no por el nombre. Word, PowerPoint y LibreOffice se abren con `zipfile` (de Python, sin librerías). Del PDF se saca el texto de hasta 40 páginas, con la librería **`pypdf`**.
-- Se devuelven como mucho 20 000 letras (la lección usa las primeras 8 000).
+- El tipo se sabe por el contenido, no por el nombre. Word, PowerPoint y LibreOffice se abren con `zipfile` (de Python, sin librerías). Del PDF se saca el texto de todas las páginas, con la librería **`pypdf`**.
+- Se devuelve el texto entero, sin límite de letras (ver «8. Documentos largos»).
 
 **Web**
 - `App.jsx`: botón, tarjeta del archivo y `leerAdjunto()`, que manda cada cosa a su ruta (las imágenes a `leer-foto` y lo demás a `leer-archivo`).
@@ -145,6 +145,18 @@ Para verlo: `git diff --stat main...profe-sin-conexion` (con tres puntos: solo l
 - Con muchas preguntas el modelo repite alguna: `quitar_preguntas_malas()` quita las repetidas o con opciones repetidas y se queda el resto. Si quedan menos de la mitad de las pedidas, se intenta otra vez.
 
 **Probado con Qwen** (tu PDF de E/S, nivel 1, 15 preguntas): dificultad 0 en 89 s, quedaron 12 (3 repetidas fuera), con respuestas falsas evidentes; dificultad 5 en 161 s, las 15, con respuestas falsas parecidas a la buena.
+
+## 8. Documentos largos: la IA los lee por partes
+
+**Lo que ve el profe**
+- Se puede subir un libro entero (por ejemplo, un PDF de 246 páginas): el texto llega completo a la caja, sin cortarse.
+- Al preparar la lección tarda más: unos 30–60 s por cada parte de 24 000 letras (un libro de 550 000 letras son unas 24 partes).
+
+**Cómo funciona** (`api/main.py`)
+- La IA lee de una vez como mucho 8 000 letras (niveles 0–2) o 20 000 (niveles 3–5). Si el texto es más largo, `leer_por_partes()` lo parte con `partir()` en trozos de `TROZO` = 24 000 letras, sin cortar párrafos.
+- La IA lee los trozos uno detrás de otro, cada uno con la memoria vacía, y saca sus apuntes (`PROMPT_APUNTES`). Cada trozo da los apuntes justos para que todos juntos quepan; si aún no caben, se vuelven a leer por partes.
+- La lección se prepara con los apuntes, igual que antes con el texto.
+- En la pestaña de la API se ve «Leyendo por partes: 3 de 24».
 
 ## Cómo comprobarlo
 

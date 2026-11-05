@@ -149,3 +149,21 @@ with main.closing(main.db()) as c:
     clases = lambda a: [f[0] for f in c.execute("SELECT clase FROM matriculas WHERE alumno = ?", (a,))]
     assert clases(sin.json()["id"]) == [] and clases(con["id"]) == [suya]
 print("Usuario de estudiante sin clase: todo bien")
+
+# Documentos largos: se parten sin perder texto y la IA los lee por partes hasta que los apuntes caben.
+largo = "\n\n".join(f"Párrafo {i}. " + "palabra " * 300 for i in range(400))  # ~1 millón de letras
+trozos = main.partir(largo)
+assert all(len(t) <= main.TROZO for t in trozos) and "".join(trozos).replace("\n", "") == largo.replace("\n", "")
+assert main.partir("x" * 50000) == ["x" * main.TROZO, "x" * main.TROZO, "x" * (50000 - 2 * main.TROZO)]
+leidos, ia_de_verdad = [], main.preguntar_ia
+main.preguntar_ia = lambda prompt, **_: leidos.append(prompt) or "Apuntes " * 40
+apuntes = main.leer_por_partes(largo, 8000)
+assert len(apuntes) <= 8000 and len(leidos) >= len(trozos) and "parte 1 de" in leidos[0]
+assert main.leer_por_partes("corto", 8000) == "corto"  # si cabe, no se llama a la IA
+# Al preparar la lección: 12 000 letras no caben en el nivel 1 (8 000), así que la lección se hace con los apuntes;
+# en el nivel 3 (20 000) sí caben y llegan enteras.
+for nivel, llega in ((1, "Apuntes"), (3, "Hola.")):
+    api.post(f"/api/clases/{suya}/lecciones", json={**cuerpo, "id": None, "texto": "Hola. " * 2000, "nivel": nivel}, headers=sesion)
+    assert llamadas[-1][0].startswith(llega), nivel
+main.preguntar_ia = ia_de_verdad
+print("Documentos largos por partes: todo bien")
