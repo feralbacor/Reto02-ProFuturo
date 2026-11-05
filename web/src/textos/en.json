@@ -323,5 +323,11 @@
  "La IA no ha podido preparar la lección. Prueba otra vez.": "The AI could not prepare the lesson. Try again.",
  "¿Borrar la pregunta {n}? Se quitará al guardar la lección.": "Delete question {n}? It will be removed when you save the lesson.",
  "Borrar la pregunta {n}": "Delete question {n}",
- "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.": "This question can't be deleted: your students have already answered this lesson. You can change its text."
+ "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.": "This question can't be deleted: your students have already answered this lesson. You can change its text.",
+ "Escribirla yo, sin IA": "Write it myself, without AI",
+ "Las fotos y los archivos necesitan conexión. Quítalos para escribir tú la lección.": "Photos and files need a connection. Remove them to write the lesson yourself.",
+ "Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.": "Preparing it needs a connection to the AI. Writing it yourself also works offline.",
+ "¿Salir sin guardar? Se perderá lo que has escrito.": "Leave without saving? What you wrote will be lost.",
+ "Escribe la lección": "Write the lesson",
+ "Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.": "Write the reading and the example, and add any questions you want. This also works offline."
 }
