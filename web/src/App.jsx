@@ -55,7 +55,7 @@ function Menu({ nombre, opciones }) {
 // ---------- Inicio ----------
 function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
-  const [vista, setVista] = useState(() => leer('profe-sesion', null) ? 'profe' : 'inicio')
+  const [vista, setVista] = useState(() => alumnoDeLaSesion() ? 'alumno' : leer('profe-sesion', null) ? 'profe' : 'inicio')
   const [conectado, setConectado] = useState(null)
   const [lengua, setLengua] = useState(idioma())
 
@@ -1177,11 +1177,24 @@ function CampoCodigo({ valor, onCambio, opcional = false }) {
   )
 }
 
+// Quién usa el aparato ahora: en sessionStorage, que sobrevive a recargar la página pero no a cerrar la app.
+// Así, en un móvil compartido, al volver a abrirla se pregunta otra vez.
+function alumnoDeLaSesion() {
+  try { return JSON.parse(sessionStorage.getItem('alumno-sesion')) } catch { return null }
+}
+
 function VistaAlumno({ onVolver }) {
-  // Quién usa el aparato ahora: solo en memoria, así al volver a abrir la app se pregunta otra vez.
-  const [alumno, setAlumno] = useState(null)
-  if (!alumno) return <AlumnoQuienEres onEntrar={setAlumno} onVolver={onVolver} />
-  return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={() => setAlumno(null)} />
+  const [alumno, setAlumno] = useState(alumnoDeLaSesion)
+  const entrar = ({ id, usuario, nombre }) => {
+    try { sessionStorage.setItem('alumno-sesion', JSON.stringify({ id, usuario, nombre })) } catch { /* sin almacenamiento: solo dura hasta recargar */ }
+    setAlumno({ id, usuario, nombre })
+  }
+  const salir = () => {
+    try { sessionStorage.removeItem('alumno-sesion') } catch { /* nada */ }
+    setAlumno(null)
+  }
+  if (!alumno) return <AlumnoQuienEres onEntrar={entrar} onVolver={onVolver} />
+  return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={salir} />
 }
 
 // Alumno de antes de los usuarios (entraba solo con su nombre) que sigue en este aparato.
