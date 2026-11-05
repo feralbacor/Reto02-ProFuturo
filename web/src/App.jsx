@@ -184,6 +184,14 @@ async function esperarLeccion(item) {
   throw new Error(SIN_CONEXION)
 }
 
+// nueva: la ha escrito el profe y puede que el servidor todavía no la tenga.
+const enviarLeccion = ({ codigo, id, leccion, publicar, nueva }) => {
+  const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones`
+  return nueva
+    ? api(`${ruta}/a-mano`, { method: 'POST', body: { id, leccion, publicar } })
+    : api(`${ruta}/${id}`, { method: 'PUT', body: { leccion, publicar } })
+}
+
 let preparandoPendientes = false
 async function prepararPendientesProfe() {
   if (preparandoPendientes) return
@@ -191,7 +199,7 @@ async function prepararPendientesProfe() {
   try {
     for (const c of leerCambiosProfe().filter(c => !c.error)) {
       try {
-        await api(`/api/clases/${encodeURIComponent(c.codigo)}/lecciones/${c.id}`, { method: 'PUT', body: { leccion: c.leccion, publicar: c.publicar } })
+        await enviarLeccion(c)
         // Solo se quita si el profe no lo ha vuelto a cambiar mientras se enviaba.
         const ahora = leerCambiosProfe()
         if (JSON.stringify(ahora.find(x => x.id === c.id)) === JSON.stringify(c)) guardarCambiosProfe(ahora.filter(x => x.id !== c.id))
@@ -504,9 +512,15 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, respondida: l.respondida, cambio: l.cambio })
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, respondida: l.respondida, cambio: l.cambio, nueva: l.cambio?.nueva })
   const cambiarLeccion = async (l, borrar) => {
     if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
+    if (l.soloAqui) { // escrita a mano y sin enviar: todavía solo está en este aparato
+      guardarCambiosProfe(borrar
+        ? leerCambiosProfe().filter(x => x.id !== l.id)
+        : leerCambiosProfe().map(x => x.id === l.id ? { ...x, publicar: !l.publicada } : x))
+      return
+    }
     try {
       const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
       await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
@@ -552,6 +566,10 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     )
   }
 
+  const soloAqui = cambios.filter(c => c.nueva && c.codigo === codigo && !clase.lecciones.some(l => l.id === c.id))
+    .map(c => ({ id: c.id, titulo: c.leccion.titulo, materia: c.leccion.materia || 'General', contenido: c.leccion, publicada: c.publicar ? 1 : 0, cambio: c, soloAqui: true }))
+  const lecciones = [...soloAqui, ...clase.lecciones.map(conCambios)]
+
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver}>{t('Mis clases')}</Volver></header>
@@ -593,12 +611,12 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Lecciones')}</h2>
-        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
-        {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
+        {lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
+        {porMateria(lecciones, l => l.materia).map(([materia, deLaMateria]) => (
           <div key={materia}>
             <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
-              {lecciones.map(l => (
+              {deLaMateria.map(l => (
                 <div key={l.id} className="fila-con-menu">
                   <button onClick={() => abrirLeccion(l)} className="fila">
                     <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
@@ -799,6 +817,14 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
     }
   }
 
+  // Sin IA y sin conexión: lo pegado va a la lectura y el profe escribe el resto en la pantalla de revisar.
+  const escribirAMano = () => onCreada({
+    id: inicial?.id || nuevoId(),
+    nueva: true,
+    publicada: 0,
+    leccion: { titulo, materia, idioma: lenguaLeccion, lectura_facil: texto, explicacion_ejemplo: '', preguntas: [] },
+  })
+
   const suficiente = texto.trim().length >= 40 || fotos.length > 0
   const espera = ocupado && <Cargando texto={ocupado} />
 
@@ -898,6 +924,10 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       <div className="acciones-pie" style={{ marginTop: 28 }}>
         {!leyendo && espera}
         <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
+        <button onClick={escribirAMano} disabled={fotos.length > 0 || !!ocupado} className="boton boton-secundario boton-ancho" style={{ marginTop: 12 }}>{t('Escribirla yo, sin IA')}</button>
+        <p className="pista">{fotos.length > 0
+          ? t('Las fotos y los archivos necesitan conexión. Quítalos para escribir tú la lección.')
+          : t('Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.')}</p>
       </div>
     </div>
   )
@@ -925,20 +955,33 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     if (window.confirm(t('¿Borrar la pregunta {n}? Se quitará al guardar la lección.', { n: i + 1 }))) cambiar('preguntas', leccion.preguntas.filter((_, j) => j !== i))
   }
 
+  // Si venía de «Por preparar», ya está guardada como lección escrita a mano.
+  const quitarDePorPreparar = () => {
+    if (leerPendientesProfe().some(p => p.id === inicial.id)) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== inicial.id))
+  }
+
+  // Una lección a mano solo existe en esta pantalla hasta que se guarda.
+  const salir = () => {
+    const sinGuardar = inicial.nueva && (!inicial.cambio || JSON.stringify(leccion) !== JSON.stringify(inicial.leccion))
+    if (!sinGuardar || window.confirm(t('¿Salir sin guardar? Se perderá lo que has escrito.'))) onVolver()
+  }
+
   const enviar = async (publicar) => {
     setGuardando(true)
     setAviso({ texto: '' })
     try {
-      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
+      const r = await enviarLeccion({ codigo, id: inicial.id, leccion, publicar, nueva: inicial.nueva })
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
       // Un cambio viejo de esta lección que esperaba en el aparato ya no vale: lo de ahora es lo último.
       if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
+      quitarDePorPreparar()
       onVolver(publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'))
     } catch (e) {
       // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
       if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
       if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
-      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar, nueva: inicial.nueva })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      quitarDePorPreparar()
       onVolver(t('Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.'))
     } finally {
       setGuardando(false)
@@ -952,13 +995,14 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={() => onVolver()}>{t('La clase')}</Volver>
+        <Volver onClick={salir}>{t('La clase')}</Volver>
         {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
-      <h1 className="titulo">{publicada ? t('Lección publicada') : t('Revisa la lección')}</h1>
+      <h1 className="titulo">{publicada ? t('Lección publicada') : inicial.nueva ? t('Escribe la lección') : t('Revisa la lección')}</h1>
       <p className="frase">{publicada
         ? t('Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.')
-        : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
+        : inicial.nueva ? t('Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.')
+          : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
 
       <div className="formulario" style={{ marginTop: 28 }}>
         <div className="campo-grupo">
