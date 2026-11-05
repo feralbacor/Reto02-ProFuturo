@@ -504,7 +504,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, respondida: l.respondida, cambio: l.cambio })
   const cambiarLeccion = async (l, borrar) => {
     if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
     try {
@@ -919,6 +919,12 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     ...l, preguntas: l.preguntas.map((p, j) => j === i ? { ...p, opciones: p.opciones.map((o, m) => m === k ? valor : o) } : p),
   }))
 
+  const quitarPregunta = (i) => {
+    // Las respuestas guardan la posición de la pregunta: la API tampoco deja quitarla si ya hay respuestas.
+    if (inicial.respondida) return window.alert(t('No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.'))
+    if (window.confirm(t('¿Borrar la pregunta {n}? Se quitará al guardar la lección.', { n: i + 1 }))) cambiar('preguntas', leccion.preguntas.filter((_, j) => j !== i))
+  }
+
   const enviar = async (publicar) => {
     setGuardando(true)
     setAviso({ texto: '' })
@@ -979,10 +985,14 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
           ? t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')
           : t('Esta lección no lleva preguntas: los alumnos solo leen y ven el ejemplo.')}</p>
         {leccion.preguntas.map((p, i) => (
-          <fieldset key={i} className="tarjeta" style={{ marginBottom: 16 }}>
+          <fieldset key={i} className="tarjeta" style={{ marginBottom: 16, position: 'relative' }}>
             <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta {n}', { n: i + 1 })}</legend>
+            <button type="button" onClick={() => quitarPregunta(i)} aria-label={t('Borrar la pregunta {n}', { n: i + 1 })}
+              style={{ position: 'absolute', top: 2, insetInlineEnd: 6, width: 40, height: 40, display: 'grid', placeItems: 'center', background: 'none', border: 0, color: 'var(--tinta-suave)', cursor: 'pointer' }}>
+              <Icono nombre="mal" tam={18} />
+            </button>
             <input className="campo" value={p.pregunta} onChange={e => cambiarPregunta(i, { pregunta: e.target.value })} aria-label={t('Pregunta {n}', { n: i + 1 })}
-              style={{ marginBottom: 14, fontWeight: 650 }} />
+              style={{ marginTop: 24, marginBottom: 14, fontWeight: 650 }} />
             {p.opciones.map((o, k) => (
               <div key={k} className={`opcion-editar ${p.correcta === k ? 'opcion-editar-buena' : ''}`}>
                 <input type="radio" name={`correcta-${i}`} checked={p.correcta === k} onChange={() => cambiarPregunta(i, { correcta: k })}
