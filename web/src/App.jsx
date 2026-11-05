@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import '@fontsource-variable/archivo/wght.css'
 import './estilo.css'
 import {
-  COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
+  COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal, useConectado,
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
 import { EstadisticasClase, EstadisticasAlumno, progresoAlumno } from './Estadisticas.jsx'
 import { t, plural, idioma, IDIOMAS, cambiarIdioma } from './idioma.js'
 import { buscar } from './tutorBuscar.js'
+import { prepararLlave, subirPaquete, actualizarPaquetes, tienePaquete, abrirPaquete, borrarCopiasProfe } from './paqueteProfe.js'
 
 // shortcut: libera los 150 MB del ayudante que se probó y se quitó (rama tutor-offline); se puede borrar cuando ningún móvil lo tenga.
 try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('ayudante') } catch { /* sin almacenamiento */ }
@@ -40,7 +41,7 @@ function Menu({ nombre, opciones }) {
   const [abierto, setAbierto] = useState(false)
   return (
     <div className="menu">
-      <button className="boton boton-secundario menu-boton" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}
+      <button className="boton boton-secundario menu-boton" onClick={() => setAbierto(!abierto)} aria-expanded={abierto} disabled={!opciones.length}
         aria-label={t('Opciones de «{nombre}»', { nombre })}>⋮</button>
       {abierto && (
         <div className="menu-lista">
@@ -58,11 +59,36 @@ function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
   const [vista, setVista] = useState(() => alumnoDeLaSesion() ? 'alumno' : leer('profe-sesion', null) ? 'profe' : 'inicio')
   const [conectado, setConectado] = useState(null)
+  const [datos, setDatos] = useState(null) // los datos de los profes: { estado: 'buscando' | 'bajando' | 'hecho' | 'error', n, nuevos, total }
   const [lengua, setLengua] = useState(idioma())
 
+  // Al abrir, al volver la red y cada 5 minutos: ¿se ve la caja? Y si es la caja, se bajan los paquetes
+  // cifrados de los profes que han cambiado (ver paqueteProfe.js), para que entren aquí también sin conexión.
+  const comprobar = useCallback(async () => {
+    let salud
+    try {
+      salud = await api('/api/salud')
+    } catch {
+      setConectado(false)
+      return setDatos(null)
+    }
+    setConectado(true)
+    if (!salud.caja) return setDatos(null) // en línea no se reparten
+    setDatos({ estado: 'buscando' })
+    try {
+      const r = await actualizarPaquetes(n => setDatos({ estado: 'bajando', n }))
+      setDatos({ estado: 'hecho', ...r })
+    } catch {
+      setDatos({ estado: 'error' })
+    }
+  }, [])
+
+  useEffect(() => { comprobar() }, [vista, comprobar])
   useEffect(() => {
-    api('/api/salud').then(() => setConectado(true)).catch(() => setConectado(false))
-  }, [vista])
+    const t = setInterval(comprobar, 5 * 60000)
+    window.addEventListener('online', comprobar)
+    return () => { clearInterval(t); window.removeEventListener('online', comprobar) }
+  }, [comprobar])
 
   if (vista === 'profe') return <VistaProfe onVolver={() => setVista('inicio')} />
   if (vista === 'alumno') return <VistaAlumno onVolver={() => setVista('inicio')} />
@@ -94,6 +120,17 @@ function App() {
         <span className="punto" style={{ background: conectado ? COLOR.verde : conectado === false ? COLOR.suave : COLOR.amarillo }} />
         {conectado === null ? t('Buscando el ordenador de la clase…') : conectado ? t('Conectado con el ordenador de la clase') : t('Sin conexión: puedes usar lo que ya está descargado')}
       </p>
+      {datos && (
+        <p className="nota" role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+          {datos.estado === 'hecho' ? <Icono nombre="bien" tam={20} /> : datos.estado === 'error' ? <Icono nombre="mal" tam={20} /> : <span className="punto" style={{ background: COLOR.amarillo }} />}
+          {datos.estado === 'buscando' ? t('Comprobando si hay datos nuevos de los profes…')
+            : datos.estado === 'bajando' ? plural(datos.n, 'Hay datos nuevos de {n} profe: descargando…', 'Hay datos nuevos de {n} profes: descargando…')
+            : datos.estado === 'error' ? t('No se han podido descargar los datos de los profes. Se volverá a probar.')
+            : datos.nuevos ? plural(datos.nuevos, 'Descarga completada: {n} profe actualizado.', 'Descarga completada: {n} profes actualizados.')
+            : datos.total ? plural(datos.total, 'Todo al día: datos de {n} profe en este aparato.', 'Todo al día: datos de {n} profes en este aparato.')
+            : t('Todavía no hay datos de profes en el ordenador de la clase.')}
+        </p>
+      )}
     </div>
   )
 }
@@ -226,9 +263,18 @@ function VistaProfe({ onVolver }) {
   const [avisoClase, setAvisoClase] = useState('') // «Publicada…» al volver de revisar una lección
   const [alumnoVisto, setAlumnoVisto] = useState(null) // { alumno, desde }: de quién se ven las estadísticas y a qué pantalla se vuelve
   const salir = useCallback(() => {
-    try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
+    borrarCopiasProfe(leer('profe-sesion', null)?.usuario)
     setSesion(null)
   }, [])
+  const cambiarSesion = useCallback((s) => { guardar('profe-sesion', s); setSesion(s) }, [])
+
+  // El paquete cifrado de este profe, para que entre sin conexión en otros aparatos: al entrar y cada 5 minutos.
+  useEffect(() => {
+    if (!sesion) return undefined
+    subirPaquete(sesion)
+    const t = setInterval(() => subirPaquete(sesion), 5 * 60000)
+    return () => clearInterval(t)
+  }, [sesion])
 
   useEffect(() => {
     if (!sesion) return undefined
@@ -261,7 +307,7 @@ function VistaProfe({ onVolver }) {
   if (pantalla === 'revisar' && editando) {
     return <ProfeRevisar codigo={codigo} inicial={editando} onVolver={(aviso = '') => { setAvisoClase(aviso); setPantalla('clase'); window.scrollTo(0, 0) }} />
   }
-  if (!sesion) return <ProfeEntrar onEntrar={(s) => { guardar('profe-sesion', s); setSesion(s) }} onVolver={onVolver} />
+  if (!sesion) return <ProfeEntrar onEntrar={cambiarSesion} onVolver={onVolver} />
   return <ProfeClases profe={sesion} onAbrir={abrirClase} onSalir={salir} />
 }
 
@@ -278,9 +324,17 @@ function ProfeEntrar({ onEntrar, onVolver }) {
     setError('')
     setEnviando(true)
     try {
-      onEntrar(await api(nueva ? '/api/profes' : '/api/profes/entrar', { method: 'POST', body: { nombre, usuario, contrasena } }))
+      const s = await api(nueva ? '/api/profes' : '/api/profes/entrar', { method: 'POST', body: { nombre, usuario, contrasena } })
+      await prepararLlave(s.usuario, contrasena)
+      onEntrar(s)
     } catch (e) {
-      setError(e.message === SIN_CONEXION ? 'Para entrar la primera vez hace falta conexión con el ordenador de la clase.' : e.message)
+      // Sin conexión: con el paquete cifrado que este aparato se bajó de la caja.
+      const s = e.message === SIN_CONEXION && !nueva ? await abrirPaquete(usuario, contrasena) : null
+      if (s) return onEntrar(s)
+      setError(e.message !== SIN_CONEXION ? e.message
+        : nueva ? t('Para crear tu cuenta hace falta conexión con el ordenador de la clase.')
+        : tienePaquete(usuario) ? t('Usuario o contraseña incorrectos.')
+        : t('Sin conexión con el ordenador de la clase, y este aparato todavía no tiene tus datos. Conéctalo una vez a la red de la clase.'))
       setEnviando(false)
     }
   }
@@ -373,6 +427,11 @@ function ElegirAlumnos({ elegidos, onCambio }) {
   )
 }
 
+// Sin conexión el profe solo ve: crear, subir y cambiar necesitan el ordenador de la clase (y su IA).
+function SoloVer() {
+  return <p className="aviso aviso-atencion">{t('Sin conexión con el ordenador de la clase: ves tus clases, notas y estadísticas como estaban la última vez. Para crear, subir o cambiar algo, conéctate a su red.')}</p>
+}
+
 function ProfeClases({ profe, onAbrir, onSalir }) {
   const [clases, setClases] = useState(() => leer('profe-clases', null)) // la copia de la última vez, al momento
   const [nombre, setNombre] = useState('')
@@ -381,14 +440,15 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   const [error, setError] = useState('')
   const [creando, setCreando] = useState(false)
   const [elegidos, setElegidos] = useState([]) // alumnos que entran ya en la clase nueva
+  const conectado = useConectado()
 
   useEffect(() => {
     api('/api/profes/clases').then(c => { setClases(c); guardar('profe-clases', c) }).catch(e => {
       if (e.estado === 401) return onSalir() // ha cambiado la contraseña en otro aparato
-      setError(esPasajero(e) ? 'Sin conexión: ves tus clases como estaban la última vez.' : e.message)
+      if (!esPasajero(e)) setError(e.message)
       setClases(c => c || [])
     })
-  }, [onSalir])
+  }, [onSalir, conectado]) // al volver la conexión, se vuelven a pedir
 
   const pendientes = usePendientesProfe()
 
@@ -450,6 +510,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
       <h1 className="titulo">{t('Hola, {nombre}', { nombre: profe.nombre })}</h1>
       <p className="frase">{t('Estas son tus clases. Cada una tiene un código: tus alumnos lo escriben para entrar.')}</p>
 
+      {!conectado && <SoloVer />}
       <Aviso texto={error} />
       {clases === null && <Cargando texto={t('Cargando tus clases…')} />}
       {hay && (
@@ -468,7 +529,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
               </span>
               <Icono nombre="seguir" className="icono-final" />
             </button>
-            <Menu nombre={c.nombre} opciones={[
+            <Menu nombre={c.nombre} opciones={!conectado ? [] : [
               [c.oculta ? t('Mostrar a los alumnos') : t('Ocultar a los alumnos'), () => ocultarClase(c)],
               [t('Eliminar la clase'), () => borrarClase(c), true],
             ]} />
@@ -486,7 +547,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
             <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder={t('Por ejemplo: 5.º A · Ciencias')} />
           </div>
           <ElegirAlumnos elegidos={elegidos} onCambio={setElegidos} />
-          <button type="submit" disabled={!nombre.trim() || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
+          <button type="submit" disabled={!nombre.trim() || creando || !conectado} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
             {creando ? t('Creando…') : t('Crear la clase')}
           </button>
         </form>
@@ -505,7 +566,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
             <input id="pin-traer" className="campo campo-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={8}
               value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
-          <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin)} className="boton boton-secundario boton-ancho">{t('Añadirla a mis clases')}</button>
+          <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin) || !conectado} className="boton boton-secundario boton-ancho">{t('Añadirla a mis clases')}</button>
         </form>
       </section>
       </div>
@@ -629,13 +690,15 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
   const [pidePin, setPidePin] = useState(false)
   const [pin, setPin] = useState('')
   const [intentado, setIntentado] = useState(false)
+  const conectado = useConectado()
 
   const cargar = useCallback(() => {
     api(`/api/clases/${encodeURIComponent(codigo)}`)
       .then(c => { setClase(c); setError(''); setPidePin(false); guardar(`profe-clase:${c.codigo}`, c) })
       .catch(e => {
         if (e.estado === 401 || e.estado === 429) { setClase(null); setPidePin(true) }
-        setError(!esPasajero(e) ? e.message : 'Sin conexión: ves la clase como estaba la última vez. Las lecciones nuevas se prepararán al volver la conexión.')
+        if (!esPasajero(e)) setError(e.message)
+        else if (!leer(`profe-clase:${codigo}`, null)) setError(t('Esta clase no se ha abierto nunca en este aparato: hace falta conexión con el ordenador de la clase.'))
       })
     api(`/api/clases/${encodeURIComponent(codigo)}/panel`)
       .then(p => {
@@ -774,11 +837,12 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
       </div>
       {!!clase.oculta && <p className="aviso aviso-atencion">{t('Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».')}</p>}
 
+      {!conectado && <SoloVer />}
       <Aviso texto={error} />
       <Aviso texto={aviso} color={COLOR.verde} />
 
       <div className="botones-fila" style={{ marginTop: 20 }}>
-        <button onClick={() => onNueva(clase.nombre)} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
+        <button onClick={() => onNueva(clase.nombre)} disabled={!conectado} className="boton boton-principal boton-grande"><Icono nombre="mas" />{t('Nueva lección')}</button>
         <button onClick={onNotas} className="boton boton-secundario boton-grande"><Icono nombre="notas" />{t('Ver notas')}</button>
       </div>
 
@@ -793,7 +857,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || t('Sin texto todavía')}</p>
                 {p.error && <Aviso texto={t('No se ha podido preparar: {error}', { error: t(p.error) })} />}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
-                  <button onClick={() => onEditarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Preparar ahora')}</button>
+                  <button onClick={() => onEditarPendiente(p)} disabled={!conectado} className="boton boton-fantasma boton-pequeno">{t('Preparar ahora')}</button>
                   <button onClick={() => quitarPendiente(p)} className="boton boton-fantasma boton-pequeno">{t('Quitar')}</button>
                 </div>
               </div>
@@ -817,7 +881,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
                     <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
                     <Icono nombre="seguir" className="icono-final" />
                   </button>
-                  <Menu nombre={l.titulo} opciones={[
+                  <Menu nombre={l.titulo} opciones={!conectado ? [] : [
                     [l.publicada ? t('Ocultar a los alumnos') : t('Publicar'), () => cambiarLeccion(l, false)],
                     [t('Eliminar la lección'), () => cambiarLeccion(l, true), true],
                   ]} />

@@ -37,7 +37,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html}', '**/archivo-latin-wght-normal-*.woff2'],
         runtimeCaching: [
           {
-            urlPattern: /^https?:\/\/.*\/api\/.*/i,
+            // Lo del profe no: lo guarda api() por profe (si no, otro profe en el mismo aparato lo vería). Ni /api/salud ni los paquetes: dicen si hay conexión y qué hay nuevo.
+            urlPattern: /^https?:\/\/[^/]+\/api\/(?!profes|clases|salud|paquetes).*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

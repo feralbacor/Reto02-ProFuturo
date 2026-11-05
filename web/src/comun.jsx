@@ -1,4 +1,5 @@
 // Estilos y utilidades que usan todas las pantallas. Es de Claude (ver REPARTO.md): se puede importar, no editar.
+import { useState, useEffect } from 'react'
 import { t } from './idioma.js'
 
 // ---------- Estilos ----------
@@ -67,12 +68,18 @@ export async function api(ruta, { method = 'GET', body } = {}) {
   if (pin) headers['X-Pin-Profe'] = pin
   const sesion = /^\/api\/(clases|profes)\b/.test(ruta) && leer('profe-sesion', null)?.sesion
   if (sesion) headers['X-Sesion-Profe'] = sesion
+  // Lo que ve el profe se guarda, por profe: sin conexión ve clases, notas y estadísticas como estaban la última vez.
+  const copia = method === 'GET' && sesion && !ruta.includes('?') && `copia:${sesion.split('.')[0]}:${ruta}`
   let res
   try {
     res = await fetch(ruta, { method, headers, body: body ? JSON.stringify(body) : undefined })
   } catch {
+    avisarConexion(false)
+    const guardada = copia && leer(copia, null)
+    if (guardada) return guardada
     throw new Error(SIN_CONEXION)
   }
+  avisarConexion(true)
   let datos = null
   try { datos = await res.json() } catch { /* respuesta sin JSON */ }
   if (!res.ok) {
@@ -83,7 +90,27 @@ export async function api(ruta, { method = 'GET', body } = {}) {
     error.detalle = detalle // p. ej. {mensaje, sugerencia} si el usuario ya existe
     throw error
   }
+  if (copia) guardar(copia, datos)
   return datos
+}
+
+// ¿Ve este aparato el ordenador de la clase? Lo sabe api(): sin él, el profe solo puede ver, no subir ni crear.
+let conectado = true
+function avisarConexion(v) {
+  if (v === conectado) return
+  conectado = v
+  window.dispatchEvent(new Event('mochila-conexion'))
+}
+export function useConectado() {
+  const [v, setV] = useState(conectado)
+  useEffect(() => {
+    const ver = () => setV(conectado)
+    window.addEventListener('mochila-conexion', ver)
+    // Sin conexión se pregunta cada 10 s si ha vuelto (/api/salud no lo guarda el service worker).
+    const t = setInterval(() => { if (!conectado) fetch('/api/salud').then(r => r.ok && avisarConexion(true), () => {}) }, 10000)
+    return () => { window.removeEventListener('mochila-conexion', ver); clearInterval(t) }
+  }, [])
+  return v
 }
 
 export function leer(clave, porDefecto) {

@@ -32,6 +32,8 @@ MODELO = os.environ.get("MODELO_IA", "qwen3-vl:4b-instruct")
 # Siempre el mismo contexto (unos 5,7 GB de RAM): si cambia entre peticiones, Ollama recarga el modelo y una vez se quedó colgado.
 # Cabe un nivel 5 de un tema largo (unos 6000 tokens de texto) con sitio de sobra para lo que escribe.
 CONTEXTO = 16384
+# Modo caja (caja.sh): este ordenador sirve también la web, y los aparatos de la wifi solo necesitan su dirección.
+WEB_CAJA = os.environ.get("MOCHILA_WEB")
 LETRAS_CODIGO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin O/0 ni I/1, que se confunden
 
 TABLAS = """
@@ -96,6 +98,15 @@ CREATE TABLE IF NOT EXISTS cuentas_profe (
 CREATE TABLE IF NOT EXISTS clases_profe (
     clase TEXT PRIMARY KEY REFERENCES clases(codigo),
     profe TEXT NOT NULL REFERENCES cuentas_profe(usuario)
+);
+-- Modo caja: lo que ve cada profe (clases, notas, estadísticas), cifrado EN SU APARATO con una llave sacada de su
+-- contraseña. Lo bajan todos los aparatos de la red: así el profe entra sin conexión en una tablet que nunca ha usado.
+CREATE TABLE IF NOT EXISTS paquetes_profe (
+    usuario TEXT PRIMARY KEY REFERENCES cuentas_profe(usuario),
+    sal TEXT NOT NULL,
+    iv TEXT NOT NULL,
+    cifrado TEXT NOT NULL,
+    fecha TEXT NOT NULL
 );
 """
 
@@ -222,6 +233,7 @@ def normalizar_usuario(usuario: str) -> str:
 def comprobar_contrasena(contrasena: str):
     if not 4 <= len(contrasena) <= 64:
         raise HTTPException(400, "La contraseña tiene que tener al menos 4 letras o números.")
+
 
 
 def guardar_contrasena(c, alumno_id: str, contrasena: str, usuario: str | None = None):
@@ -601,7 +613,7 @@ threading.Thread(target=contestar_dudas_pendientes, daemon=True).start()
 def salud():
     url = ollama_disponible()
     ia = "apagada" if not url else ("gpu" if url != OLLAMAS[-1] else "lista")
-    return {"estado": "ok", "ia": ia, "modelo": MODELO}
+    return {"estado": "ok", "ia": ia, "modelo": MODELO, "caja": bool(WEB_CAJA)}
 
 
 class NuevaClase(BaseModel):
@@ -688,6 +700,50 @@ def entrar_profe(datos: Entrar):
         fila = c.execute("SELECT usuario, nombre, sal, hash FROM cuentas_profe WHERE usuario = ?", (usuario,)).fetchone()
     comprobar_secreto(f"profe:{usuario}", datos.contrasena, fila, "Usuario o contraseña incorrectos.")
     return {"usuario": usuario, "nombre": fila["nombre"], "sesion": f"{usuario}.{firma_sesion(fila['hash'])}"}
+
+
+class Paquete(BaseModel):
+    sal: str
+    iv: str
+    cifrado: str
+
+
+BASE64 = re.compile(r"[A-Za-z0-9+/]*={0,2}")
+
+
+def solo_en_caja():
+    # En línea no se reparten: cualquiera de internet podría bajarlos y probar contraseñas.
+    if not WEB_CAJA:
+        raise HTTPException(404, "Solo en modo caja.")
+
+
+@app.put("/api/profes/paquete", dependencies=[Depends(solo_en_caja)])
+def guardar_paquete(datos: Paquete, profe: str = Depends(solo_con_sesion)):
+    if not (0 < len(datos.sal) <= 64 and 0 < len(datos.iv) <= 32 and 0 < len(datos.cifrado) <= 3_000_000
+            and all(BASE64.fullmatch(x) for x in (datos.iv, datos.cifrado))):
+        raise HTTPException(400, "Paquete no válido.")
+    fecha = ahora()
+    with closing(db()) as c, c:
+        c.execute("INSERT OR REPLACE INTO paquetes_profe (usuario, sal, iv, cifrado, fecha) VALUES (?, ?, ?, ?, ?)",
+                  (profe, datos.sal, datos.iv, datos.cifrado, fecha))
+    return {"fecha": fecha}
+
+
+# Primero las fechas (poco), y el aparato pide solo los paquetes que ha cambiado.
+@app.get("/api/paquetes-profe/fechas", dependencies=[Depends(solo_en_caja)])
+def fechas_paquetes():
+    with closing(db()) as c:
+        return [dict(f) for f in c.execute("SELECT usuario, fecha FROM paquetes_profe").fetchall()]
+
+
+@app.get("/api/paquetes-profe", dependencies=[Depends(solo_en_caja)])
+def paquetes_profe(usuarios: str = ""):
+    pedidos = [u for u in usuarios.split(",") if u][:500]
+    filtro = f" WHERE p.usuario IN ({','.join('?' * len(pedidos))})" if pedidos else ""
+    with closing(db()) as c:
+        filas = c.execute("SELECT p.usuario, cp.nombre, p.sal, p.iv, p.cifrado, p.fecha "
+                          "FROM paquetes_profe p JOIN cuentas_profe cp ON cp.usuario = p.usuario" + filtro, pedidos).fetchall()
+    return [dict(f) for f in filas]
 
 
 @app.get("/api/profes/clases")
@@ -1283,3 +1339,8 @@ def estadisticas_clase(codigo: str):
 from panel import instante, router as router_panel  # noqa: E402
 
 app.include_router(router_panel, dependencies=SOLO_PROFE)
+
+# Modo caja: la web va al final para que las rutas /api/… de arriba ganen siempre.
+if WEB_CAJA:
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=WEB_CAJA, html=True), name="web")

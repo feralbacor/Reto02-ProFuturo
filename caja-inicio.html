@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- Modo caja: primera página de cada aparato (http, sin internet). La app está en la misma dirección, con https y el puerto 8443.
+     Si el aparato ya se fía de la caja, pasa solo a la app; si no, pide permiso para bajar el certificado y dice cómo instalarlo. -->
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mochila · Caja de la clase</title>
+<style>
+  :root { --papel: #f5f1e8; --superficie: #fffdf8; --tinta: #1a1712; --suave: #4f483c; --borde: #ddd4c3; --amarillo: #f5b400; --verde: #17784b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--papel); color: var(--tinta); font: 19px/1.5 system-ui, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 30px; line-height: 1.1; margin: 8px 0 12px; }
+  .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; padding: 18px; margin-top: 18px; }
+  .boton { display: flex; width: 100%; min-height: 56px; align-items: center; justify-content: center; margin-top: 12px; border-radius: 12px;
+           border: 1px solid #c8bda8; background: var(--superficie); color: var(--tinta); font: 650 19px system-ui, sans-serif; text-decoration: none; cursor: pointer; }
+  .principal { background: var(--amarillo); border-color: transparent; color: #1c1404; }
+  .nota { color: var(--suave); font-size: 16px; }
+  ol { padding-left: 22px; } li { margin: 6px 0; }
+  [hidden] { display: none !important; }
+</style>
+<main>
+  <p class="nota">Mochila · Caja de la clase</p>
+
+  <section id="mirando">
+    <h1>Conectando con la caja…</h1>
+    <p class="nota">Un momento.</p>
+  </section>
+
+  <section id="permiso" hidden>
+    <h1>Este aparato necesita el certificado de la caja</h1>
+    <p>Para que Mochila funcione en este aparato <strong>sin internet</strong>, hay que descargar e instalar una vez el certificado de la caja de la clase.</p>
+    <div class="tarjeta">
+      <p style="margin-top:0"><strong>¿Descargamos el certificado?</strong></p>
+      <p class="nota">Es un archivo pequeño («mochila-caja.crt», 1 KB) que viene de este ordenador de la clase, no de internet. Tu navegador puede avisar de que la descarga no es segura: es normal, pulsa «Descargar» o «Conservar».</p>
+      <button id="si" class="boton principal">Sí, descargar el certificado</button>
+      <button id="no" class="boton">Ahora no</button>
+    </div>
+  </section>
+
+  <section id="pasos" hidden>
+    <h1>Ahora instálalo</h1>
+    <p id="descargado" class="nota">Descargando «mochila-caja.crt»…</p>
+    <div class="tarjeta"><p style="margin-top:0"><strong id="sistema"></strong></p><ol id="lista"></ol></div>
+    <button id="listo" class="boton principal">Ya lo he instalado: abrir Mochila</button>
+    <p id="aun-no" class="nota" hidden>Este aparato todavía no se fía de la caja. Revisa los pasos (en algunos aparatos hay que cerrar el navegador y volver a abrirlo).</p>
+    <a href="mochila-caja.crt" download class="boton">Descargarlo otra vez</a>
+  </section>
+
+  <section id="sin-permiso" hidden>
+    <h1>Sin el certificado</h1>
+    <p>Puedes entrar igual, pero el navegador avisará de que la conexión no es segura y Mochila <strong>no funcionará sin internet</strong> en este aparato.</p>
+    <a id="sin-instalar" class="boton">Entrar sin instalarlo</a>
+    <button id="volver" class="boton principal">Descargar el certificado</button>
+  </section>
+</main>
+<script>
+  const APP = `https://${location.hostname}:8443/` // la IP de la wifi, o localhost en el propio ordenador de la caja
+  document.getElementById('sin-instalar').href = APP
+  const ver = (id) => ['mirando', 'permiso', 'pasos', 'sin-permiso'].forEach(s => { document.getElementById(s).hidden = s !== id })
+
+  // Si el https de la caja ya funciona aquí, el aparato tiene el certificado: directo a la app.
+  const seFia = () => Promise.race([
+    fetch(APP + 'api/salud', { mode: 'no-cors', cache: 'no-store' }).then(() => true, () => false),
+    new Promise(listo => setTimeout(() => listo(false), 4000)),
+  ])
+
+  const ua = navigator.userAgent
+  const ipad = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+  const firefox = /Firefox\//.test(ua)
+  const PASOS = firefox ? ['Firefox', ['Abre Ajustes → Privacidad y seguridad → Ver certificados.', 'Pestaña «Autoridades» → Importar → elige «mochila-caja.crt».', 'Marca «Confiar en esta CA para identificar sitios web» y acepta.']]
+    : /Android/.test(ua) ? ['Android', ['Abre Ajustes → Seguridad → Cifrado y credenciales (o «Más ajustes de seguridad»).', 'Instalar un certificado → Certificado de CA → «Instalar de todos modos».', 'Elige «mochila-caja.crt» en Descargas.']]
+    : ipad ? ['iPad / iPhone', ['Pulsa «Permitir» cuando pregunte si quieres descargar el perfil.', 'Abre Ajustes → «Perfil descargado» → Instalar (te pedirá el código del aparato).', 'Ajustes → General → Información → Ajustes de confianza de certificados → activa «Mochila caja».']]
+    : /Windows/.test(ua) ? ['Windows', ['Abre «mochila-caja.crt» desde las descargas → Instalar certificado.', 'Elige «Equipo local» → «Colocar todos los certificados en el siguiente almacén».', 'Examinar → «Entidades de certificación raíz de confianza» → Aceptar → Finalizar.', 'Cierra el navegador del todo y vuelve a abrirlo.']]
+    : /CrOS|Linux/.test(ua) ? ['Chromebook / Linux', ['En Chrome: Configuración → Privacidad y seguridad → Seguridad → Gestionar certificados.', 'Pestaña «Autoridades» → Importar → elige «mochila-caja.crt».', 'Marca «Confiar en este certificado para identificar sitios web».']]
+    : ['Mac', ['Abre «mochila-caja.crt» desde las descargas y añádelo al llavero «Inicio de sesión».', 'En Acceso a Llaveros, doble clic en «Mochila caja» → Confiar → «Confiar siempre».', 'Cierra el navegador del todo (Cmd + Q) y vuelve a abrirlo.']]
+
+  function descargar() {
+    ver('pasos')
+    document.getElementById('sistema').textContent = 'En ' + PASOS[0] + ':'
+    document.getElementById('lista').innerHTML = PASOS[1].map(p => '<li>' + p + '</li>').join('')
+    const a = Object.assign(document.createElement('a'), { href: 'mochila-caja.crt', download: 'mochila-caja.crt' })
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => { document.getElementById('descargado').textContent = 'Descargado. Si no lo ves, pulsa «Descargarlo otra vez».' }, 1500)
+  }
+
+  document.getElementById('si').onclick = descargar
+  document.getElementById('volver').onclick = descargar
+  document.getElementById('no').onclick = () => ver('sin-permiso')
+  document.getElementById('listo').onclick = async () => {
+    if (await seFia()) return location.replace(APP)
+    document.getElementById('aun-no').hidden = false
+  }
+
+  seFia().then(si => si ? location.replace(APP) : ver('permiso'))
+</script>
+</html>
