@@ -32,7 +32,7 @@ export default defineConfig({
         ]
       },
       workbox: {
-        importScripts: ['segundo-plano.js'], // sincronización con la app cerrada (lo pidió Fernando; es de Claude)
+        importScripts: ['segundo-plano.js'], // sincronización con la app cerrada
         // La letra (Archivo, solo caracteres latinos: 35 KB) también se guarda, para que sin conexión se vea igual.
         globPatterns: ['**/*.{js,css,html}', '**/archivo-latin-wght-normal-*.woff2'],
         runtimeCaching: [

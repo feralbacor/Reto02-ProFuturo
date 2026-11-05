@@ -52,10 +52,10 @@ Si un paso falla, marcarlo como pendiente; el cronómetro no sustituye la compro
 
 Después del ensayo principal: enviar una nueva duda o responder offline, cerrar la app, recuperar red y comprobar el servidor sin reabrir el móvil. Registrar si el navegador ejecuta la sincronización en segundo plano. Si no ocurre, abrir la app y verificar el envío normal. El navegador decide soporte y planificación: no prometer envío inmediato ni universal con la app cerrada.
 
-No se ha ejecutado esta prueba física desde el agente. El ensayo anterior de Claude en Chrome con tamaño móvil es evidencia distinta.
+Esta prueba todavía no se ha hecho en un móvil físico. El ensayo anterior en Chrome con tamaño de móvil es una prueba distinta.
 
 ## Ampliación de idioma y accesibilidad
 
 Con la lección francesa ya descargada y la voz instalada, activar modo avión y volver a **Écouter**. Registrar por separado texto accesible y audio disponible. La voz depende del dispositivo: seleccionar una lengua no instala su voz.
 
-El profe puede elegir idioma en el paso 4 de la nueva lección. La generación multilingüe ya está integrada: como prueba ampliada, crear una lección con Français en el paso 4, revisar el contenido publicado y enviar una duda para comprobar que la respuesta está en francés. Claude midió 103 s para generar una lección francesa; reservar esta prueba para después de los diez minutos y usar la demo manual si tarda. En otro ensayo, seleccionar العربية en portada y comprobar que el panel utiliza dirección RTL, fechas locales y una tabla desplazable. Las claves nuevas del panel ya están traducidas; anotar cualquier texto que aparezca en español o inglés de forma inesperada.
+El profe puede elegir idioma en el paso 4 de la nueva lección. La generación multilingüe ya está integrada: como prueba ampliada, crear una lección con Français en el paso 4, revisar el contenido publicado y enviar una duda para comprobar que la respuesta está en francés. se midieron 103 s para generar una lección francesa; reservar esta prueba para después de los diez minutos y usar la demo manual si tarda. En otro ensayo, seleccionar العربية en portada y comprobar que el panel utiliza dirección RTL, fechas locales y una tabla desplazable. Las claves nuevas del panel ya están traducidas; anotar cualquier texto que aparezca en español o inglés de forma inesperada.
