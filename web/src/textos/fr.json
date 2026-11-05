@@ -317,5 +317,8 @@
  "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "Si tu n'as ni photo ni fichier, écris ou colle ici le texte ou l'information.",
  "Oculta": "Cachée",
  "Mostrar a los alumnos": "Montrer aux élèves",
- "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "Cette classe est cachée : tes élèves ne la voient pas et son code ne les laisse pas entrer. Pour la montrer, appuie sur ⋮ dans « Mes classes »."
+ "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "Cette classe est cachée : tes élèves ne la voient pas et son code ne les laisse pas entrer. Pour la montrer, appuie sur ⋮ dans « Mes classes ».",
+ "Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
+ "Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Lecture des photos et des fichiers et préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
+ "La IA no ha podido preparar la lección. Prueba otra vez.": "L'IA n'a pas pu préparer la leçon. Réessaie."
 }

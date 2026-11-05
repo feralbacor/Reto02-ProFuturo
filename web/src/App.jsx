@@ -166,6 +166,24 @@ async function prepararLeccion(item, alAvanzar) {
   return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id } })
 }
 
+// La IA tarda minutos y Cloudflare corta la espera a los 100 s, aunque la API siga trabajando: se le va preguntando.
+// Devuelve la lección cuando está. Si de verdad no hay conexión, lanza SIN_CONEXION; si la IA ha dejado de prepararla, lo dice.
+async function esperarLeccion(item) {
+  for (let fallos = 0; fallos < 3;) {
+    try {
+      const clase = await api(`/api/clases/${encodeURIComponent(item.codigo)}`)
+      fallos = 0
+      if (clase.lecciones.some(l => l.id === item.id)) return prepararLeccion(item) // ya está hecha: la API la devuelve sin volver a prepararla
+      if (!clase.preparando?.includes(item.id)) throw Object.assign(new Error('La IA no ha podido preparar la lección. Prueba otra vez.'), { estado: 409 })
+    } catch (e) {
+      if (!esPasajero(e)) throw e
+      fallos++
+    }
+    await new Promise(seguir => setTimeout(seguir, 10000))
+  }
+  throw new Error(SIN_CONEXION)
+}
+
 let preparandoPendientes = false
 async function prepararPendientesProfe() {
   if (preparandoPendientes) return
@@ -749,11 +767,15 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
+    setOcupado(t(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.' : 'Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
     let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, preguntas: cuantas, dificultad_preguntas: dificultad, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
-      const r = await prepararLeccion(item, (i) => { item = i })
+      const r = await prepararLeccion(item, (i) => { item = i }).catch((e) => {
+        // 409: ya se estaba preparando (se pulsó otra vez o «Preparar ahora»). Pasajero: puede que solo se haya cortado la espera.
+        if (e.estado !== 409 && (!esPasajero(e) || fallaLaIa(e))) throw e
+        return esperarLeccion(item)
+      })
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
@@ -873,8 +895,8 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <Aviso texto={error} />
-      {!leyendo && espera}
       <div className="acciones-pie" style={{ marginTop: 28 }}>
+        {!leyendo && espera}
         <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
       </div>
     </div>
