@@ -317,5 +317,8 @@
  "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "If you have no photo or file, type or paste the text or information here.",
  "Oculta": "Hidden",
  "Mostrar a los alumnos": "Show to students",
- "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "This class is hidden: your students can't see it and its code doesn't let them in. To show it, press ⋮ in «My classes»."
+ "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "This class is hidden: your students can't see it and its code doesn't let them in. To show it, press ⋮ in «My classes».",
+ "Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Preparing the lesson… It can take between 1 and 10 minutes, depending on the level and questions you chose. Please be patient.",
+ "Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Reading the photos and files and preparing the lesson… It can take between 1 and 10 minutes, depending on the level and questions you chose. Please be patient.",
+ "La IA no ha podido preparar la lección. Prueba otra vez.": "The AI could not prepare the lesson. Try again."
 }

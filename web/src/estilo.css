@@ -222,6 +222,8 @@ textarea.campo { padding: 12px 14px; line-height: 1.55; min-height: 150px; resiz
 .opcion-editar .campo { min-height: 50px; font-size: 18px; }
 .opcion-editar-buena .campo { border-color: var(--verde); box-shadow: 0 0 0 1px var(--verde); }
 .acciones-pie { position: sticky; bottom: 0; margin: 0 -16px; padding: 12px 16px 16px; background: var(--papel); border-top: 1px solid var(--borde); }
+.acciones-pie .cargando { flex-direction: row; gap: 12px; padding: 0 0 12px; font-size: 17px; text-align: start; }
+.acciones-pie .ruedita { flex: none; }
 
 /* index.css apaga todos los botones desactivados; las opciones ya contestadas tienen que verse bien. */
 .opcion:disabled { opacity: 1; cursor: default !important; }

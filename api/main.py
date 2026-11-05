@@ -293,6 +293,13 @@ DIFICULTAD_PREGUNTAS = {
     5: "muy difíciles: de razonar en varios pasos, casos nuevos y excepciones, nada de memoria; las incorrectas son casi correctas y solo se descartan entendiendo bien el tema",
 }
 MAX_PREGUNTAS = 30
+# Tope de lo que puede escribir la IA, según el nivel y las preguntas. A veces entra en bucle repitiendo frases
+# (1 de 3 con un texto corto): sin tope sigue unos 20 min y deja a la cola esperando. Si llega al tope, se reintenta.
+TOKENS_LECTURA = {0: 500, 1: 800, 2: 1500, 3: 3000, 4: 5000, 5: 8000}
+TOKENS_POR_PREGUNTA = 200
+# Lecciones que la IA está preparando ahora, como (clase, id): así un segundo intento no se pone a la cola detrás del primero.
+# shortcut: solo vale con un proceso de la API; con varios, pasarlo a la base de datos.
+PREPARANDO = set()
 
 PROMPT_LECCION = """Eres profesor. Con el TEXTO de abajo prepara una lección en {idioma}.
 Escribe TODO en {idioma} (título, lectura, ejemplo, preguntas y respuestas), aunque el TEXTO esté en otro idioma.
@@ -467,10 +474,11 @@ def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificult
                  '  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.\n'
                  '  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.')
     prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, largo=largo, frases=frases, preguntas=preguntas)
+    # Sin pasarse del contexto: lo que no cabe seguiría escribiéndose. Un token son 3 letras o más, así que len // 2 va sobrado.
+    tope = min(TOKENS_LECTURA[nivel] + TOKENS_POR_PREGUNTA * n_preguntas, CONTEXTO - len(prompt) // 2)
     for _ in range(2):  # si sale mal, se intenta una vez más
-        # Sin tope de palabras (-2: hasta llenar el contexto, así no se queda colgada repitiendo) y sin prisa:
-        # un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
-        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel, n_preguntas, dificultad), max_tokens=-2, espera=1800)
+        # Sin prisa: un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
+        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel, n_preguntas, dificultad), max_tokens=tope, espera=1800)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
@@ -479,7 +487,7 @@ def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificult
         # Si al quitar las repetidas quedan menos de la mitad de las pedidas, se intenta otra vez.
         if leccion_valida(leccion) and len(leccion["preguntas"]) * 2 >= n_preguntas:
             return {**barajar_opciones(leccion), "idioma": idioma, "nivel": nivel, "dificultad_preguntas": dificultad}
-    raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
+    raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Preparar la lección».")
 
 
 # ---------- Dudas («Tengo una duda») ----------
@@ -663,6 +671,8 @@ def traer_clase(datos: TraerClase, profe: str = Depends(solo_con_sesion)):
 
 @app.get("/api/clases/{codigo}", dependencies=SOLO_PROFE)
 def ver_clase(codigo: str):
+    # Antes de leer las lecciones: si una acaba justo ahora, o sale aquí o sale en la lista.
+    preparando = [i for k, i in list(PREPARANDO) if k == normalizar_codigo(codigo)]
     with closing(db()) as c:
         clase = buscar_clase(c, codigo)
         alumnos = c.execute("""
@@ -687,6 +697,7 @@ def ver_clase(codigo: str):
         "alumnos": [dict(a) for a in alumnos],
         "dudas": [dict(d) for d in dudas],
         "lecciones": lecciones,
+        "preparando": preparando,
         "materias": list(dict.fromkeys(l["materia"] for l in lecciones)),  # la más reciente primero
     }
 
@@ -1010,17 +1021,24 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
         raise HTTPException(400, "El número de preguntas tiene que ser 0, 5, 10, 15, 20, 25 o 30.")
     if datos.dificultad_preguntas is not None and datos.dificultad_preguntas not in DIFICULTAD_PREGUNTAS:
         raise HTTPException(400, "La dificultad de las preguntas tiene que ser de 0 a 5.")
-    leccion = crear_leccion_con_ia(texto[:8000 if datos.nivel < 3 else 20000], datos.idioma, datos.nivel,
-                                   datos.preguntas, datos.dificultad_preguntas)
-    if " ".join(datos.titulo.split()):
-        leccion["titulo"] = " ".join(datos.titulo.split())[:120]
     leccion_id = datos.id or str(uuid.uuid4())
-    with closing(db()) as c, c:
-        leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
-        c.execute(
-            "INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 0)",
-            (leccion_id, clase["codigo"], leccion["titulo"], json.dumps(leccion, ensure_ascii=False), ahora()),
-        )
+    en_marcha = (clase["codigo"], leccion_id)
+    if en_marcha in PREPARANDO:
+        raise HTTPException(409, "Esta lección ya se está preparando.")
+    PREPARANDO.add(en_marcha)
+    try:
+        leccion = crear_leccion_con_ia(texto[:8000 if datos.nivel < 3 else 20000], datos.idioma, datos.nivel,
+                                       datos.preguntas, datos.dificultad_preguntas)
+        if " ".join(datos.titulo.split()):
+            leccion["titulo"] = " ".join(datos.titulo.split())[:120]
+        with closing(db()) as c, c:
+            leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
+            c.execute(
+                "INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 0)",
+                (leccion_id, clase["codigo"], leccion["titulo"], json.dumps(leccion, ensure_ascii=False), ahora()),
+            )
+    finally:  # después de guardarla: quien pregunta la ve en la lista o en PREPARANDO, nunca en ninguna
+        PREPARANDO.discard(en_marcha)
     return {"id": leccion_id, "leccion": leccion}
 
 
