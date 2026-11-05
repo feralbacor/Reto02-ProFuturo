@@ -447,8 +447,125 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
+// Lo que el panel de notas dice de un alumno. «Hecha» es una lección con todas sus preguntas contestadas:
+// de una lección sin preguntas el servidor no puede saber si la ha leído, así que no cuenta.
+function progresoAlumno(notas) {
+  const conPreguntas = notas.filter(n => n.total > 0)
+  const hechas = conPreguntas.filter(n => n.respondidas === n.total)
+  const aciertos = hechas.reduce((suma, n) => suma + n.aciertos, 0)
+  const preguntas = hechas.reduce((suma, n) => suma + n.total, 0)
+  return { hechas: hechas.length, de: conPreguntas.length, aciertos, preguntas }
+}
+
+function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar }) {
+  // shortcut: el orden a mano se guarda en este aparato (así funciona sin conexión); para compartirlo entre aparatos haría falta una columna en matriculas.
+  const [orden, setOrden] = useState(() => leer(`profe-orden:${codigo}`, []))
+  const [criterio, setCriterio] = useState('propio')
+  const [arrastre, setArrastre] = useState(null) // { id, inicio, dy, destino, alto, centros }: destino es su sitio entre los demás
+  const filas = useRef(null)
+
+  const nota = (a) => progreso[a.id]?.preguntas ? progreso[a.id].aciertos / progreso[a.id].preguntas : -1 // sin lecciones hechas, al final
+  const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, idioma())
+  const posicion = (a) => { const i = orden.indexOf(a.id); return i < 0 ? orden.length : i } // los nuevos, al final
+  const lista = [...alumnos].sort(criterio === 'nombre' ? porNombre
+    : criterio === 'nota' ? (a, b) => nota(b) - nota(a) || porNombre(a, b)
+      : (a, b) => posicion(a) - posicion(b))
+  const sitio = (id) => lista.findIndex(a => a.id === id)
+
+  // Al mover uno, lo que se ve en ese momento pasa a ser «Mi orden».
+  const mover = (id, destino) => {
+    const ids = lista.map(a => a.id).filter(x => x !== id)
+    ids.splice(destino, 0, id)
+    setOrden(ids)
+    guardar(`profe-orden:${codigo}`, ids)
+    setCriterio('propio')
+  }
+  const empezar = (ev, id) => {
+    if (ev.button !== 0) return
+    ev.currentTarget.setPointerCapture(ev.pointerId)
+    // Las filas no cambian de sitio en la página hasta soltar: si no, el móvil pierde el dedo. Solo se desplazan a la vista.
+    const fila = ev.currentTarget.parentElement
+    const centros = [...filas.current.children].filter(f => f !== fila).map(f => {
+      const caja = f.getBoundingClientRect()
+      return caja.top + window.scrollY + caja.height / 2
+    })
+    setArrastre({ id, inicio: ev.pageY, dy: 0, destino: sitio(id), alto: fila.getBoundingClientRect().height, centros })
+  }
+  const arrastrar = (ev) => {
+    if (!arrastre) return
+    if (ev.clientY < 70) window.scrollBy(0, -14)
+    else if (ev.clientY > window.innerHeight - 70) window.scrollBy(0, 14)
+    setArrastre({ ...arrastre, dy: ev.pageY - arrastre.inicio, destino: arrastre.centros.filter(c => ev.pageY > c).length })
+  }
+  const soltar = () => {
+    if (arrastre && arrastre.destino !== sitio(arrastre.id)) mover(arrastre.id, arrastre.destino)
+    setArrastre(null)
+  }
+  const conTeclado = (ev, id) => {
+    const destino = sitio(id) + (ev.key === 'ArrowUp' ? -1 : ev.key === 'ArrowDown' ? 1 : 0)
+    if (destino === sitio(id) || destino < 0 || destino >= lista.length) return
+    ev.preventDefault()
+    mover(id, destino)
+  }
+
+  // Cuánto se ve desplazada cada fila: la que se arrastra sigue al dedo y las demás le dejan hueco.
+  const desplazamiento = (a, i) => {
+    if (!arrastre) return 0
+    if (a.id === arrastre.id) return arrastre.dy
+    const origen = sitio(arrastre.id)
+    if (i > origen && i <= arrastre.destino) return -arrastre.alto
+    return i >= arrastre.destino && i < origen ? arrastre.alto : 0
+  }
+
+  return (
+    <>
+      <div className="alumnos-cabecera">
+        <h2 className="seccion-titulo" style={{ margin: 0 }}>{t('Alumnos ({n})', { n: alumnos.length })}</h2>
+        {alumnos.length > 1 && (
+          <div className="alumnos-orden">
+            <label htmlFor="alumnos-orden" className="nota" style={{ margin: 0 }}>{t('Ordenar por')}</label>
+            <select id="alumnos-orden" className="campo selector-idioma" value={criterio} onChange={e => setCriterio(e.target.value)}>
+              <option value="propio">{t('Mi orden')}</option>
+              <option value="nombre">{t('Nombre (A-Z)')}</option>
+              <option value="nota">{t('Mejor nota')}</option>
+            </select>
+          </div>
+        )}
+      </div>
+      {alumnos.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no ha entrado nadie. Diles el código de arriba.')}</p>}
+      {alumnos.length > 0 && <div ref={filas} className={`tarjeta ${arrastre ? 'alumnos-arrastrando' : ''}`} style={{ padding: '2px 16px' }}>
+        {lista.map((a, i) => {
+          const p = progreso[a.id]
+          const moviendo = arrastre?.id === a.id
+          return (
+            <div key={a.id} className={`alumno-fila ${moviendo ? 'alumno-moviendo' : ''}`}
+              style={arrastre ? { transform: `translateY(${desplazamiento(a, i)}px)` } : undefined}>
+              <button type="button" className="alumno-asa" aria-label={t('Mover a {nombre}. Usa las flechas arriba y abajo.', { nombre: a.nombre })}
+                onPointerDown={ev => empezar(ev, a.id)} onPointerMove={arrastrar} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
+                onKeyDown={ev => conTeclado(ev, a.id)}>⋮⋮</button>
+              <span className="alumno-texto">
+                <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
+                {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
+                {p?.de > 0 && (
+                  <span className="nota" style={{ display: 'block', marginTop: 2 }}>
+                    {t('Lecciones {hechas}/{de}', { hechas: p.hechas, de: p.de })}
+                    {criterio === 'nota' && ` · ${p.preguntas ? t('Nota {aciertos}/{preguntas}', p) : t('Sin nota')}`}
+                  </span>
+                )}
+              </span>
+              {a.usuario && <button onClick={() => onNuevaContrasena(a)} className="boton boton-secundario boton-pequeno alumno-contrasena">{t('Nueva contraseña')}</button>}
+              <Menu nombre={a.nombre} opciones={[[t('Eliminar alumno'), () => onEliminar(a), true]]} />
+            </div>
+          )
+        })}
+      </div>}
+    </>
+  )
+}
+
 function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
+  const [progreso, setProgreso] = useState(() => leer(`profe-progreso:${codigo}`, {})) // { alumno_id: progresoAlumno }
   const [error, setError] = useState('')
   const [pidePin, setPidePin] = useState(false)
   const [pin, setPin] = useState('')
@@ -461,6 +578,13 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
         if (e.estado === 401 || e.estado === 429) { setClase(null); setPidePin(true) }
         setError(!esPasajero(e) ? e.message : 'Sin conexión: ves la clase como estaba la última vez. Las lecciones nuevas se prepararán al volver la conexión.')
       })
+    api(`/api/clases/${encodeURIComponent(codigo)}/panel`)
+      .then(p => {
+        const nuevo = Object.fromEntries(p.alumnos.map(a => [a.id, progresoAlumno(a.notas)]))
+        setProgreso(nuevo)
+        guardar(`profe-progreso:${codigo}`, nuevo)
+      })
+      .catch(() => { /* sin conexión o sin PIN: el aviso ya lo da la petición de arriba */ })
   }, [codigo])
 
   useEffect(() => {
@@ -490,6 +614,16 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
       window.alert(t('Listo. Dile a {nombre} su usuario («{usuario}») y su nueva contraseña. La primera vez tendrá que entrar con conexión.', { nombre: a.nombre, usuario: a.usuario }))
     } catch (e) {
       window.alert(t(e.message))
+    }
+  }
+
+  const eliminarAlumno = async (a) => {
+    if (!window.confirm(t('¿Eliminar a {nombre} de esta clase? Se eliminarán también los datos de sus respuestas y sus dudas en esta clase. No se puede deshacer.', { nombre: a.nombre }))) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${encodeURIComponent(a.id)}`, { method: 'DELETE' })
+      cargar()
+    } catch (e) {
+      setError(e.message)
     }
   }
 
@@ -656,22 +790,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
       )}
 
       <section className="seccion">
-        <h2 className="seccion-titulo">{t('Alumnos ({n})', { n: clase.alumnos.length })}</h2>
-        {clase.alumnos.length === 0
-          ? <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no ha entrado nadie. Diles el código de arriba.')}</p>
-          : (
-            <div className="tarjeta" style={{ padding: '2px 16px' }}>
-              {clase.alumnos.map(a => (
-                <div key={a.id} className="alumno-fila">
-                  <span>
-                    <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
-                    {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
-                  </span>
-                  {a.usuario && <button onClick={() => nuevaContrasena(a)} className="boton boton-secundario boton-pequeno">{t('Nueva contraseña')}</button>}
-                </div>
-              ))}
-            </div>
-          )}
+        <ListaAlumnos codigo={codigo} alumnos={clase.alumnos} progreso={progreso} onNuevaContrasena={nuevaContrasena} onEliminar={eliminarAlumno} />
       </section>
     </div>
   )
