@@ -1,5 +1,5 @@
 # Cada push a main: compila la web y deja web + api en la rama «en-linea».
-# El servidor (https://51.95.206.229) la baja cada minuto y la pone en línea.
+# El servidor la baja cada minuto y la pone en línea.
 name: En línea
 on:
   push:

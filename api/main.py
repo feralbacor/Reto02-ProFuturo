@@ -803,12 +803,6 @@ def resumen_clases(c, profe: str | None = None):
     """, (profe,) if profe else ()).fetchall()]
 
 
-@app.get("/api/clases")
-def listar_clases():
-    with closing(db()) as c:
-        return resumen_clases(c)
-
-
 class Entrar(BaseModel):
     usuario: str
     contrasena: str
