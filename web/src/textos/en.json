@@ -329,5 +329,15 @@
  "Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.": "Preparing it needs a connection to the AI. Writing it yourself also works offline.",
  "¿Salir sin guardar? Se perderá lo que has escrito.": "Leave without saving? What you wrote will be lost.",
  "Escribe la lección": "Write the lesson",
- "Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.": "Write the reading and the example, and add any questions you want. This also works offline."
+ "Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.": "Write the reading and the example, and add any questions you want. This also works offline.",
+ "Ordenar por": "Sort by",
+ "Mi orden": "My order",
+ "Nombre (A-Z)": "Name (A-Z)",
+ "Mejor nota": "Best score",
+ "Mover a {nombre}. Usa las flechas arriba y abajo.": "Move {nombre}. Use the up and down arrows.",
+ "Lecciones {hechas}/{de}": "Lessons {hechas}/{de}",
+ "Nota {aciertos}/{preguntas}": "Score {aciertos}/{preguntas}",
+ "Sin nota": "No score",
+ "Eliminar alumno": "Remove student",
+ "¿Eliminar a {nombre} de esta clase? Se eliminarán también los datos de sus respuestas y sus dudas en esta clase. No se puede deshacer.": "Remove {nombre} from this class? The data of their answers and questions in this class will also be deleted. This cannot be undone."
 }
