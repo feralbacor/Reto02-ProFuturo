@@ -323,5 +323,21 @@
  "La IA no ha podido preparar la lección. Prueba otra vez.": "L'IA n'a pas pu préparer la leçon. Réessaie.",
  "¿Borrar la pregunta {n}? Se quitará al guardar la lección.": "Supprimer la question {n} ? Elle sera retirée quand tu enregistreras la leçon.",
  "Borrar la pregunta {n}": "Supprimer la question {n}",
- "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.": "Impossible de supprimer cette question : tes élèves ont déjà répondu à cette leçon. Tu peux changer son texte."
+ "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.": "Impossible de supprimer cette question : tes élèves ont déjà répondu à cette leçon. Tu peux changer son texte.",
+ "Escribirla yo, sin IA": "L'écrire moi-même, sans IA",
+ "Las fotos y los archivos necesitan conexión. Quítalos para escribir tú la lección.": "Les photos et les fichiers ont besoin d'une connexion. Retire-les pour écrire la leçon toi-même.",
+ "Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.": "La préparer demande une connexion à l'IA. L'écrire toi-même fonctionne aussi sans connexion.",
+ "¿Salir sin guardar? Se perderá lo que has escrito.": "Quitter sans enregistrer ? Ce que tu as écrit sera perdu.",
+ "Escribe la lección": "Écris la leçon",
+ "Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.": "Écris la lecture et l'exemple, et ajoute les questions que tu veux. Cela fonctionne aussi sans connexion.",
+ "Ordenar por": "Trier par",
+ "Mi orden": "Mon ordre",
+ "Nombre (A-Z)": "Nom (A-Z)",
+ "Mejor nota": "Meilleure note",
+ "Mover a {nombre}. Usa las flechas arriba y abajo.": "Déplacer {nombre}. Utilise les flèches haut et bas.",
+ "Lecciones {hechas}/{de}": "Leçons {hechas}/{de}",
+ "Nota {aciertos}/{preguntas}": "Note {aciertos}/{preguntas}",
+ "Sin nota": "Sans note",
+ "Eliminar alumno": "Supprimer l'élève",
+ "¿Eliminar a {nombre} de esta clase? Se eliminarán también los datos de sus respuestas y sus dudas en esta clase. No se puede deshacer.": "Supprimer {nombre} de cette classe ? Les données de ses réponses et de ses questions dans cette classe seront aussi supprimées. Cette action est irréversible."
 }

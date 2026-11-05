@@ -1154,6 +1154,29 @@ def guardar_leccion(codigo: str, leccion_id: str, datos: GuardarLeccion):
     return {"ok": True, "materia": leccion["materia"]}
 
 
+class LeccionAMano(BaseModel):
+    id: str  # la pone el aparato del profe: si llega dos veces (sin conexión), no se duplica
+    leccion: dict
+    publicar: bool = False
+
+
+@app.post("/api/clases/{codigo}/lecciones/a-mano", dependencies=SOLO_PROFE)
+def leccion_a_mano(codigo: str, datos: LeccionAMano):
+    """Una lección escrita por el profe, sin IA: por eso se puede preparar sin conexión y enviar después."""
+    if not re.fullmatch(r"[0-9a-f-]{36}", datos.id):
+        raise HTTPException(400, "Id de lección no válido.")
+    if not leccion_valida(datos.leccion):
+        raise HTTPException(400, "Falta algún texto, o hay dos opciones iguales en una pregunta. Revísalo.")
+    with closing(db()) as c, c:
+        clase = buscar_clase(c, codigo)
+        leccion = {**datos.leccion, "materia": materia_de(c, clase["codigo"], datos.leccion.get("materia"))}
+        c.execute(
+            "INSERT OR IGNORE INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 0)",
+            (datos.id, clase["codigo"], leccion["titulo"].strip(), json.dumps(leccion, ensure_ascii=False), ahora()),
+        )
+    return guardar_leccion(codigo, datos.id, GuardarLeccion(leccion=leccion, publicar=datos.publicar))
+
+
 class Publicada(BaseModel):
     publicada: bool
 

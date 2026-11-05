@@ -55,7 +55,7 @@ function Menu({ nombre, opciones }) {
 // ---------- Inicio ----------
 function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
-  const [vista, setVista] = useState(() => leer('profe-sesion', null) ? 'profe' : 'inicio')
+  const [vista, setVista] = useState(() => alumnoDeLaSesion() ? 'alumno' : leer('profe-sesion', null) ? 'profe' : 'inicio')
   const [conectado, setConectado] = useState(null)
   const [lengua, setLengua] = useState(idioma())
 
@@ -184,6 +184,14 @@ async function esperarLeccion(item) {
   throw new Error(SIN_CONEXION)
 }
 
+// nueva: la ha escrito el profe y puede que el servidor todavía no la tenga.
+const enviarLeccion = ({ codigo, id, leccion, publicar, nueva }) => {
+  const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones`
+  return nueva
+    ? api(`${ruta}/a-mano`, { method: 'POST', body: { id, leccion, publicar } })
+    : api(`${ruta}/${id}`, { method: 'PUT', body: { leccion, publicar } })
+}
+
 let preparandoPendientes = false
 async function prepararPendientesProfe() {
   if (preparandoPendientes) return
@@ -191,7 +199,7 @@ async function prepararPendientesProfe() {
   try {
     for (const c of leerCambiosProfe().filter(c => !c.error)) {
       try {
-        await api(`/api/clases/${encodeURIComponent(c.codigo)}/lecciones/${c.id}`, { method: 'PUT', body: { leccion: c.leccion, publicar: c.publicar } })
+        await enviarLeccion(c)
         // Solo se quita si el profe no lo ha vuelto a cambiar mientras se enviaba.
         const ahora = leerCambiosProfe()
         if (JSON.stringify(ahora.find(x => x.id === c.id)) === JSON.stringify(c)) guardarCambiosProfe(ahora.filter(x => x.id !== c.id))
@@ -496,8 +504,125 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
+// Lo que el panel de notas dice de un alumno. «Hecha» es una lección con todas sus preguntas contestadas:
+// de una lección sin preguntas el servidor no puede saber si la ha leído, así que no cuenta.
+function progresoAlumno(notas) {
+  const conPreguntas = notas.filter(n => n.total > 0)
+  const hechas = conPreguntas.filter(n => n.respondidas === n.total)
+  const aciertos = hechas.reduce((suma, n) => suma + n.aciertos, 0)
+  const preguntas = hechas.reduce((suma, n) => suma + n.total, 0)
+  return { hechas: hechas.length, de: conPreguntas.length, aciertos, preguntas }
+}
+
+function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar }) {
+  // shortcut: el orden a mano se guarda en este aparato (así funciona sin conexión); para compartirlo entre aparatos haría falta una columna en matriculas.
+  const [orden, setOrden] = useState(() => leer(`profe-orden:${codigo}`, []))
+  const [criterio, setCriterio] = useState('propio')
+  const [arrastre, setArrastre] = useState(null) // { id, inicio, dy, destino, alto, centros }: destino es su sitio entre los demás
+  const filas = useRef(null)
+
+  const nota = (a) => progreso[a.id]?.preguntas ? progreso[a.id].aciertos / progreso[a.id].preguntas : -1 // sin lecciones hechas, al final
+  const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, idioma())
+  const posicion = (a) => { const i = orden.indexOf(a.id); return i < 0 ? orden.length : i } // los nuevos, al final
+  const lista = [...alumnos].sort(criterio === 'nombre' ? porNombre
+    : criterio === 'nota' ? (a, b) => nota(b) - nota(a) || porNombre(a, b)
+      : (a, b) => posicion(a) - posicion(b))
+  const sitio = (id) => lista.findIndex(a => a.id === id)
+
+  // Al mover uno, lo que se ve en ese momento pasa a ser «Mi orden».
+  const mover = (id, destino) => {
+    const ids = lista.map(a => a.id).filter(x => x !== id)
+    ids.splice(destino, 0, id)
+    setOrden(ids)
+    guardar(`profe-orden:${codigo}`, ids)
+    setCriterio('propio')
+  }
+  const empezar = (ev, id) => {
+    if (ev.button !== 0) return
+    ev.currentTarget.setPointerCapture(ev.pointerId)
+    // Las filas no cambian de sitio en la página hasta soltar: si no, el móvil pierde el dedo. Solo se desplazan a la vista.
+    const fila = ev.currentTarget.parentElement
+    const centros = [...filas.current.children].filter(f => f !== fila).map(f => {
+      const caja = f.getBoundingClientRect()
+      return caja.top + window.scrollY + caja.height / 2
+    })
+    setArrastre({ id, inicio: ev.pageY, dy: 0, destino: sitio(id), alto: fila.getBoundingClientRect().height, centros })
+  }
+  const arrastrar = (ev) => {
+    if (!arrastre) return
+    if (ev.clientY < 70) window.scrollBy(0, -14)
+    else if (ev.clientY > window.innerHeight - 70) window.scrollBy(0, 14)
+    setArrastre({ ...arrastre, dy: ev.pageY - arrastre.inicio, destino: arrastre.centros.filter(c => ev.pageY > c).length })
+  }
+  const soltar = () => {
+    if (arrastre && arrastre.destino !== sitio(arrastre.id)) mover(arrastre.id, arrastre.destino)
+    setArrastre(null)
+  }
+  const conTeclado = (ev, id) => {
+    const destino = sitio(id) + (ev.key === 'ArrowUp' ? -1 : ev.key === 'ArrowDown' ? 1 : 0)
+    if (destino === sitio(id) || destino < 0 || destino >= lista.length) return
+    ev.preventDefault()
+    mover(id, destino)
+  }
+
+  // Cuánto se ve desplazada cada fila: la que se arrastra sigue al dedo y las demás le dejan hueco.
+  const desplazamiento = (a, i) => {
+    if (!arrastre) return 0
+    if (a.id === arrastre.id) return arrastre.dy
+    const origen = sitio(arrastre.id)
+    if (i > origen && i <= arrastre.destino) return -arrastre.alto
+    return i >= arrastre.destino && i < origen ? arrastre.alto : 0
+  }
+
+  return (
+    <>
+      <div className="alumnos-cabecera">
+        <h2 className="seccion-titulo" style={{ margin: 0 }}>{t('Alumnos ({n})', { n: alumnos.length })}</h2>
+        {alumnos.length > 1 && (
+          <div className="alumnos-orden">
+            <label htmlFor="alumnos-orden" className="nota" style={{ margin: 0 }}>{t('Ordenar por')}</label>
+            <select id="alumnos-orden" className="campo selector-idioma" value={criterio} onChange={e => setCriterio(e.target.value)}>
+              <option value="propio">{t('Mi orden')}</option>
+              <option value="nombre">{t('Nombre (A-Z)')}</option>
+              <option value="nota">{t('Mejor nota')}</option>
+            </select>
+          </div>
+        )}
+      </div>
+      {alumnos.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no ha entrado nadie. Diles el código de arriba.')}</p>}
+      {alumnos.length > 0 && <div ref={filas} className={`tarjeta ${arrastre ? 'alumnos-arrastrando' : ''}`} style={{ padding: '2px 16px' }}>
+        {lista.map((a, i) => {
+          const p = progreso[a.id]
+          const moviendo = arrastre?.id === a.id
+          return (
+            <div key={a.id} className={`alumno-fila ${moviendo ? 'alumno-moviendo' : ''}`}
+              style={arrastre ? { transform: `translateY(${desplazamiento(a, i)}px)` } : undefined}>
+              <button type="button" className="alumno-asa" aria-label={t('Mover a {nombre}. Usa las flechas arriba y abajo.', { nombre: a.nombre })}
+                onPointerDown={ev => empezar(ev, a.id)} onPointerMove={arrastrar} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
+                onKeyDown={ev => conTeclado(ev, a.id)}>⋮⋮</button>
+              <span className="alumno-texto">
+                <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
+                {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
+                {p?.de > 0 && (
+                  <span className="nota" style={{ display: 'block', marginTop: 2 }}>
+                    {t('Lecciones {hechas}/{de}', { hechas: p.hechas, de: p.de })}
+                    {criterio === 'nota' && ` · ${p.preguntas ? t('Nota {aciertos}/{preguntas}', p) : t('Sin nota')}`}
+                  </span>
+                )}
+              </span>
+              {a.usuario && <button onClick={() => onNuevaContrasena(a)} className="boton boton-secundario boton-pequeno alumno-contrasena">{t('Nueva contraseña')}</button>}
+              <Menu nombre={a.nombre} opciones={[[t('Eliminar alumno'), () => onEliminar(a), true]]} />
+            </div>
+          )
+        })}
+      </div>}
+    </>
+  )
+}
+
 function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
+  const [progreso, setProgreso] = useState(() => leer(`profe-progreso:${codigo}`, {})) // { alumno_id: progresoAlumno }
   const [error, setError] = useState('')
   const [pidePin, setPidePin] = useState(false)
   const [pin, setPin] = useState('')
@@ -510,6 +635,13 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
         if (e.estado === 401 || e.estado === 429) { setClase(null); setPidePin(true) }
         setError(!esPasajero(e) ? e.message : 'Sin conexión: ves la clase como estaba la última vez. Las lecciones nuevas se prepararán al volver la conexión.')
       })
+    api(`/api/clases/${encodeURIComponent(codigo)}/panel`)
+      .then(p => {
+        const nuevo = Object.fromEntries(p.alumnos.map(a => [a.id, progresoAlumno(a.notas)]))
+        setProgreso(nuevo)
+        guardar(`profe-progreso:${codigo}`, nuevo)
+      })
+      .catch(() => { /* sin conexión o sin PIN: el aviso ya lo da la petición de arriba */ })
   }, [codigo])
 
   useEffect(() => {
@@ -542,6 +674,16 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     }
   }
 
+  const eliminarAlumno = async (a) => {
+    if (!window.confirm(t('¿Eliminar a {nombre} de esta clase? Se eliminarán también los datos de sus respuestas y sus dudas en esta clase. No se puede deshacer.', { nombre: a.nombre }))) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(codigo)}/alumnos/${encodeURIComponent(a.id)}`, { method: 'DELETE' })
+      cargar()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const cambiarRespuesta = async (d) => {
     const nueva = window.prompt(t('Tu respuesta a «{pregunta}»:', { pregunta: d.pregunta }), d.respuesta || '')
     if (!nueva?.trim()) return
@@ -561,9 +703,15 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     return c ? { ...l, titulo: c.leccion.titulo, materia: c.leccion.materia || l.materia, contenido: c.leccion, publicada: l.publicada || (c.publicar ? 1 : 0), cambio: c } : l
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
-  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, respondida: l.respondida, cambio: l.cambio })
+  const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, respondida: l.respondida, cambio: l.cambio, nueva: l.cambio?.nueva })
   const cambiarLeccion = async (l, borrar) => {
     if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
+    if (l.soloAqui) { // escrita a mano y sin enviar: todavía solo está en este aparato
+      guardarCambiosProfe(borrar
+        ? leerCambiosProfe().filter(x => x.id !== l.id)
+        : leerCambiosProfe().map(x => x.id === l.id ? { ...x, publicar: !l.publicada } : x))
+      return
+    }
     try {
       const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
       await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
@@ -609,6 +757,10 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
     )
   }
 
+  const soloAqui = cambios.filter(c => c.nueva && c.codigo === codigo && !clase.lecciones.some(l => l.id === c.id))
+    .map(c => ({ id: c.id, titulo: c.leccion.titulo, materia: c.leccion.materia || 'General', contenido: c.leccion, publicada: c.publicar ? 1 : 0, cambio: c, soloAqui: true }))
+  const lecciones = [...soloAqui, ...clase.lecciones.map(conCambios)]
+
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver}>{t('Mis clases')}</Volver></header>
@@ -650,12 +802,12 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
 
       <section className="seccion">
         <h2 className="seccion-titulo">{t('Lecciones')}</h2>
-        {clase.lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
-        {porMateria(clase.lecciones.map(conCambios), l => l.materia).map(([materia, lecciones]) => (
+        {lecciones.length === 0 && <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no hay lecciones. Pulsa «Nueva lección» y haz una foto a una página del libro.')}</p>}
+        {porMateria(lecciones, l => l.materia).map(([materia, deLaMateria]) => (
           <div key={materia}>
             <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
-              {lecciones.map(l => (
+              {deLaMateria.map(l => (
                 <div key={l.id} className="fila-con-menu">
                   <button onClick={() => abrirLeccion(l)} className="fila">
                     <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
@@ -695,22 +847,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
       )}
 
       <section className="seccion">
-        <h2 className="seccion-titulo">{t('Alumnos ({n})', { n: clase.alumnos.length })}</h2>
-        {clase.alumnos.length === 0
-          ? <p className="frase" style={{ marginTop: 0 }}>{t('Todavía no ha entrado nadie. Diles el código de arriba.')}</p>
-          : (
-            <div className="tarjeta" style={{ padding: '2px 16px' }}>
-              {clase.alumnos.map(a => (
-                <div key={a.id} className="alumno-fila">
-                  <span>
-                    <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
-                    {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
-                  </span>
-                  {a.usuario && <button onClick={() => nuevaContrasena(a)} className="boton boton-secundario boton-pequeno">{t('Nueva contraseña')}</button>}
-                </div>
-              ))}
-            </div>
-          )}
+        <ListaAlumnos codigo={codigo} alumnos={clase.alumnos} progreso={progreso} onNuevaContrasena={nuevaContrasena} onEliminar={eliminarAlumno} />
       </section>
     </div>
   )
@@ -856,6 +993,14 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
     }
   }
 
+  // Sin IA y sin conexión: lo pegado va a la lectura y el profe escribe el resto en la pantalla de revisar.
+  const escribirAMano = () => onCreada({
+    id: inicial?.id || nuevoId(),
+    nueva: true,
+    publicada: 0,
+    leccion: { titulo, materia, idioma: lenguaLeccion, lectura_facil: texto, explicacion_ejemplo: '', preguntas: [] },
+  })
+
   const suficiente = texto.trim().length >= 40 || fotos.length > 0
   const espera = ocupado && <Cargando texto={ocupado} />
 
@@ -955,6 +1100,10 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       <div className="acciones-pie" style={{ marginTop: 28 }}>
         {!leyendo && espera}
         <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
+        <button onClick={escribirAMano} disabled={fotos.length > 0 || !!ocupado} className="boton boton-secundario boton-ancho" style={{ marginTop: 12 }}>{t('Escribirla yo, sin IA')}</button>
+        <p className="pista">{fotos.length > 0
+          ? t('Las fotos y los archivos necesitan conexión. Quítalos para escribir tú la lección.')
+          : t('Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.')}</p>
       </div>
     </div>
   )
@@ -982,20 +1131,33 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     if (window.confirm(t('¿Borrar la pregunta {n}? Se quitará al guardar la lección.', { n: i + 1 }))) cambiar('preguntas', leccion.preguntas.filter((_, j) => j !== i))
   }
 
+  // Si venía de «Por preparar», ya está guardada como lección escrita a mano.
+  const quitarDePorPreparar = () => {
+    if (leerPendientesProfe().some(p => p.id === inicial.id)) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== inicial.id))
+  }
+
+  // Una lección a mano solo existe en esta pantalla hasta que se guarda.
+  const salir = () => {
+    const sinGuardar = inicial.nueva && (!inicial.cambio || JSON.stringify(leccion) !== JSON.stringify(inicial.leccion))
+    if (!sinGuardar || window.confirm(t('¿Salir sin guardar? Se perderá lo que has escrito.'))) onVolver()
+  }
+
   const enviar = async (publicar) => {
     setGuardando(true)
     setAviso({ texto: '' })
     try {
-      const r = await api(`/api/clases/${encodeURIComponent(codigo)}/lecciones/${inicial.id}`, { method: 'PUT', body: { leccion, publicar } })
+      const r = await enviarLeccion({ codigo, id: inicial.id, leccion, publicar, nueva: inicial.nueva })
       cambiar('materia', r.materia) // por si se ha unido a una que ya existía con otras mayúsculas
       // Un cambio viejo de esta lección que esperaba en el aparato ya no vale: lo de ahora es lo último.
       if (leerCambiosProfe().some(c => c.id === inicial.id)) guardarCambiosProfe(leerCambiosProfe().filter(c => c.id !== inicial.id))
+      quitarDePorPreparar()
       onVolver(publicar ? t('Publicada. Tus alumnos la tendrán la próxima vez que se conecten.') : t('Guardado.'))
     } catch (e) {
       // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
       if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
       if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
-      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar, nueva: inicial.nueva })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
+      quitarDePorPreparar()
       onVolver(t('Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.'))
     } finally {
       setGuardando(false)
@@ -1009,13 +1171,14 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
   return (
     <div className="pagina">
       <header className="cabecera">
-        <Volver onClick={() => onVolver()}>{t('La clase')}</Volver>
+        <Volver onClick={salir}>{t('La clase')}</Volver>
         {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
-      <h1 className="titulo">{publicada ? t('Lección publicada') : t('Revisa la lección')}</h1>
+      <h1 className="titulo">{publicada ? t('Lección publicada') : inicial.nueva ? t('Escribe la lección') : t('Revisa la lección')}</h1>
       <p className="frase">{publicada
         ? t('Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.')
-        : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
+        : inicial.nueva ? t('Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.')
+          : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
 
       <div className="formulario" style={{ marginTop: 28 }}>
         <div className="campo-grupo">
@@ -1190,11 +1353,24 @@ function CampoCodigo({ valor, onCambio, opcional = false }) {
   )
 }
 
+// Quién usa el aparato ahora: en sessionStorage, que sobrevive a recargar la página pero no a cerrar la app.
+// Así, en un móvil compartido, al volver a abrirla se pregunta otra vez.
+function alumnoDeLaSesion() {
+  try { return JSON.parse(sessionStorage.getItem('alumno-sesion')) } catch { return null }
+}
+
 function VistaAlumno({ onVolver }) {
-  // Quién usa el aparato ahora: solo en memoria, así al volver a abrir la app se pregunta otra vez.
-  const [alumno, setAlumno] = useState(null)
-  if (!alumno) return <AlumnoQuienEres onEntrar={setAlumno} onVolver={onVolver} />
-  return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={() => setAlumno(null)} />
+  const [alumno, setAlumno] = useState(alumnoDeLaSesion)
+  const entrar = ({ id, usuario, nombre }) => {
+    try { sessionStorage.setItem('alumno-sesion', JSON.stringify({ id, usuario, nombre })) } catch { /* sin almacenamiento: solo dura hasta recargar */ }
+    setAlumno({ id, usuario, nombre })
+  }
+  const salir = () => {
+    try { sessionStorage.removeItem('alumno-sesion') } catch { /* nada */ }
+    setAlumno(null)
+  }
+  if (!alumno) return <AlumnoQuienEres onEntrar={entrar} onVolver={onVolver} />
+  return <AlumnoCasa key={alumno.id} alumno={alumno} onSalir={salir} />
 }
 
 // Alumno de antes de los usuarios (entraba solo con su nombre) que sigue en este aparato.
