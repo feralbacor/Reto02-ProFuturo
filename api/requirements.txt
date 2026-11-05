@@ -1,0 +1,2 @@
+# Lo instala solo el servidor en línea. FastAPI y uvicorn ya están allí.
+pypdf>=5  # leer PDF en «Subir un archivo»
