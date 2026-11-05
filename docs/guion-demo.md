@@ -37,7 +37,7 @@ Para encajar en tres minutos, ensayar los movimientos en paralelo a la narració
 | 2 | Estudiante | «Soy estudiante» → «¿Quién eres?» → «Crear mi usuario». Nombre, usuario único de 3–20 minúsculas o números, contraseña de 4–64 caracteres, código de clase → «Crear y entrar». | «Varios niños pueden compartir un móvil sin compartir cuenta. No pedimos email ni apellidos.» |
 | 3 | Profe | «Nueva lección» → paso 1, «Las fotos de la página». «Hacer una foto» o «Elegir fotos»; máximo cinco. | Para el ensayo corto, usar una sola imagen preparada. |
 | 4 | Profe | «Leer la foto» con una sola imagen → paso 2, «El texto». | Revisar y corregir la transcripción antes de continuar. Con varias imágenes cambia el rótulo de lectura. |
-| 5 | Profe | Paso 3, «La materia»: escribir o elegir una sugerencia. Paso 4, «El idioma de la lección»: elegir el idioma y pulsar «Preparar la lección». | «El tiempo depende del equipo y del idioma: Claude midió 103 s para francés.» No prometer un tiempo fijo; la lectura y la revisión añaden tiempo. |
+| 5 | Profe | Paso 3, «La materia»: escribir o elegir una sugerencia. Paso 4, «El idioma de la lección»: elegir el idioma y pulsar «Preparar la lección». | «El tiempo depende del equipo y del idioma: se midieron 103 s para francés.» No prometer un tiempo fijo; la lectura y la revisión añaden tiempo. |
 | 6 | Profe | «Revisa la lección». Revisar lectura, ejemplo y preguntas; pulsar «Publicar». | Comprobar cuál es la opción correcta antes de publicar. |
 | 7 | Estudiante | Reabrir la app conectado al aula o esperar la sincronización. | Comprobar que la nueva lección aparece en su materia y está descargada antes de desconectar. |
 
@@ -76,6 +76,6 @@ Antes de presentar, ejecutar las comprobaciones y confirmar la compilación. Dep
 2. Abrir **L'eau et ses états**, materia **Sciences**, de AULA23. En la lectura, pulsar **Écouter**. El contenido lleva `idioma: fr`; comprobar que la voz disponible es francesa. El idioma de la interfaz no debe convertir en francesa una lección española.
 3. Con esa lección descargada y una voz francesa local instalada, repetir sin red. Si falta la voz, demostrar la lectura y explicar la limitación; no inventar soporte de audio offline.
 4. Repetir con English y **The parts of a plant**, materia **Science**, si hay tiempo. Los títulos de las lecciones son contenido: no cambian al modificar el selector de portada.
-5. En «Nueva lección», el paso 4 selecciona el idioma del contenido. La API ya genera la lección en el idioma elegido y las dudas se contestan en el idioma de esa lección. Claude probó francés en 103 s; ensayar antes de generar en directo y conservar las lecciones manuales como plan B.
+5. En «Nueva lección», el paso 4 selecciona el idioma del contenido. La API ya genera la lección en el idioma elegido y las dudas se contestan en el idioma de esa lección. Se probó francés en 103 s; ensayar antes de generar en directo y conservar las lecciones manuales como plan B.
 
 Francés e inglés están revisados por el equipo. Las demás traducciones son borradores automáticos; los textos faltantes intentan aparecer en inglés y luego en español. Las claves nuevas del panel ya están traducidas en los 23 idiomas; comprobar los rótulos en el móvil del ensayo.

@@ -1,4 +1,4 @@
-// Estilos y utilidades que usan todas las pantallas. Es de Claude (ver REPARTO.md): se puede importar, no editar.
+// Estilos y utilidades que usan todas las pantallas.
 import { useState, useEffect } from 'react'
 import { t } from './idioma.js'
 

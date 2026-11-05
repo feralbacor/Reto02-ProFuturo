@@ -10,3 +10,10 @@ dist/
 *.pem
 *.key
 caja-cert/
+
+# Notas de trabajo del equipo: se quedan en cada ordenador, no van al repositorio
+AGENTS.md
+CLAUDE.md
+REPARTO.md
+PROMPTS*.txt
+CAMBIOS-*.md

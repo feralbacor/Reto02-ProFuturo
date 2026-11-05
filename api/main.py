@@ -1552,7 +1552,7 @@ def estadisticas_clase(codigo: str):
     }
 
 
-# Panel de notas: es de ChatGPT (ver REPARTO.md). Sus rutas están en panel.py y piden el PIN del profe.
+# Panel de notas: sus rutas están en panel.py y piden el PIN del profe.
 from panel import instante, router as router_panel  # noqa: E402
 
 app.include_router(router_panel, dependencies=SOLO_PROFE)

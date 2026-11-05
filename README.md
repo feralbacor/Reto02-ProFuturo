@@ -256,7 +256,7 @@ Después abre http://localhost:5173.
 
 **Para enseñarlo en un móvil a través de internet**, sin caja: `zsh movil.sh` crea un túnel público con `cloudflared`. Necesita internet y la API encendida.
 
-**En línea:** lo que está en la rama `main` de GitHub se publica solo en el servidor del equipo; ver `AGENTS.md`. En línea no hay modo caja.
+**En línea:** lo que está en la rama `main` de GitHub se publica solo en el servidor del equipo (`.github/workflows/en-linea.yml`). En línea no hay modo caja.
 
 ---
 
@@ -279,7 +279,7 @@ npm --prefix web run build
 ```
 
 **Más documentación:**
-- [CAMBIOS-V2.md](CAMBIOS-V2.md) y [CAMBIOS-V2-CAJA.md](CAMBIOS-V2-CAJA.md): cómo funciona por dentro el modo caja.
+- Cómo funciona por dentro el modo caja: comentarios de `caja.sh`, `caja-inicio.html` y `web/src/paqueteProfe.js`.
 - [Pitch de tres minutos](docs/pitch.md), [guion de la demo](docs/guion-demo.md), [preguntas del jurado](docs/preguntas-jurado.md), [ensayo en móvil](docs/ensayo.md) y [accesos de demo](docs/demo.md).
 
 ---
