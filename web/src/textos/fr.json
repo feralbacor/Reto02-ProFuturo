@@ -320,5 +320,8 @@
  "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "Cette classe est cachée : tes élèves ne la voient pas et son code ne les laisse pas entrer. Pour la montrer, appuie sur ⋮ dans « Mes classes ».",
  "Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
  "Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Lecture des photos et des fichiers et préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
- "La IA no ha podido preparar la lección. Prueba otra vez.": "L'IA n'a pas pu préparer la leçon. Réessaie."
+ "La IA no ha podido preparar la lección. Prueba otra vez.": "L'IA n'a pas pu préparer la leçon. Réessaie.",
+ "¿Borrar la pregunta {n}? Se quitará al guardar la lección.": "Supprimer la question {n} ? Elle sera retirée quand tu enregistreras la leçon.",
+ "Borrar la pregunta {n}": "Supprimer la question {n}",
+ "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.": "Impossible de supprimer cette question : tes élèves ont déjà répondu à cette leçon. Tu peux changer son texte."
 }

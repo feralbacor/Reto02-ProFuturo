@@ -723,7 +723,8 @@ def ver_clase(codigo: str):
             WHERE m.clase = ? ORDER BY a.nombre COLLATE NOCASE
         """, (clase["codigo"],)).fetchall()
         lecciones = c.execute("""
-            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia, contenido
+            SELECT id, titulo, fecha, publicada, COALESCE(json_extract(contenido, '$.materia'), 'General') AS materia, contenido,
+                   EXISTS (SELECT 1 FROM respuestas r WHERE r.leccion_id = lecciones.id) AS respondida
             FROM lecciones WHERE clase = ? ORDER BY fecha DESC
         """, (clase["codigo"],)).fetchall()
         dudas = c.execute("""
@@ -1103,6 +1104,9 @@ def ver_leccion(codigo: str, leccion_id: str):
     return {**dict(fila), "contenido": contenido}
 
 
+NO_QUITAR_PREGUNTA = "No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto."
+
+
 class GuardarLeccion(BaseModel):
     leccion: dict
     publicar: bool = False
@@ -1114,6 +1118,11 @@ def guardar_leccion(codigo: str, leccion_id: str, datos: GuardarLeccion):
         raise HTTPException(400, "Falta algún texto, o hay dos opciones iguales en una pregunta. Revísalo.")
     with closing(db()) as c, c:
         fila = buscar_leccion(c, codigo, leccion_id)
+        # Las respuestas guardan la posición de la pregunta: al quitar una, contarían para la pregunta equivocada.
+        # shortcut: no ve las respuestas que siguen sin enviar en un móvil; para cubrirlas, cada pregunta necesitaría su propio id.
+        if (len(datos.leccion["preguntas"]) < len(json.loads(fila["contenido"])["preguntas"])
+                and c.execute("SELECT 1 FROM respuestas WHERE leccion_id = ?", (leccion_id,)).fetchone()):
+            raise HTTPException(409, NO_QUITAR_PREGUNTA)
         leccion = {**datos.leccion, "materia": materia_de(c, fila["clase"], datos.leccion.get("materia"))}
         c.execute(
             "UPDATE lecciones SET titulo = ?, contenido = ?, publicada = MAX(publicada, ?) WHERE id = ?",
