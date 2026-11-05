@@ -449,6 +449,48 @@ def quitar_preguntas_malas(leccion):
     return leccion
 
 
+# ---------- Documentos largos: la IA los lee por partes ----------
+# Un libro entero no cabe en la memoria de la IA (CONTEXTO). Se parte en trozos, la IA saca los apuntes
+# de cada trozo, uno detrás de otro (cada uno empieza con la memoria vacía), y la lección se hace con los apuntes.
+TROZO = 24000  # letras que la IA lee de una vez (unos 7 000 tokens: caben de sobra con sus apuntes)
+PROMPT_APUNTES = """Esto es la parte {n} de {total} de un documento. Saca sus apuntes para preparar después una lección.
+- Escribe en el mismo idioma del TEXTO, en frases completas y ordenadas, unas {palabras} palabras.
+- Recoge las ideas, definiciones, nombres, datos y ejemplos importantes. Si se ve para qué curso es (primaria, ESO, bachillerato, FP o universidad), dilo en la primera frase.
+- Usa solo lo que dice el TEXTO. No inventes nada. No hables del texto («el texto dice…»): escribe directamente los apuntes.
+- Sáltate índices, portadas, números de página y lo que se repite en cada página.
+
+TEXTO:
+{texto}"""
+
+
+def partir(texto, largo=TROZO):
+    """Parte el texto en trozos de como mucho `largo` letras, sin cortar los párrafos si se puede."""
+    trozos, actual = [], ""
+    for parrafo in texto.split("\n\n"):
+        if actual and len(actual) + 2 + len(parrafo) > largo:
+            trozos.append(actual)
+            actual = ""
+        while len(parrafo) > largo:  # un párrafo enorme se corta a la fuerza
+            trozos.append(parrafo[:largo])
+            parrafo = parrafo[largo:]
+        actual = f"{actual}\n\n{parrafo}" if actual else parrafo
+    return trozos + [actual] if actual.strip() else trozos
+
+
+def leer_por_partes(texto, limite):
+    """Si el texto no cabe en `limite` letras, la IA lo lee por partes y devuelve sus apuntes (que sí caben)."""
+    while len(texto) > limite:
+        trozos = partir(texto)
+        palabras = max(60, min(500, limite // len(trozos) // 7))  # para que todos los apuntes juntos quepan
+        apuntes = []
+        for n, trozo in enumerate(trozos, 1):
+            print(f"Leyendo por partes: {n} de {len(trozos)}", flush=True)  # se ve en la pestaña de la API
+            apuntes.append(preguntar_ia(PROMPT_APUNTES.format(n=n, total=len(trozos), palabras=palabras, texto=trozo),
+                                        max_tokens=palabras * 3, espera=1800).strip())
+        texto = "\n\n".join(a for a in apuntes if a)  # si aún no cabe, se vuelve a leer por partes
+    return texto
+
+
 def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificultad=None):
     min_palabras, max_palabras, frases, n_por_nivel, como = NIVELES[nivel]
     n_preguntas = n_por_nivel if n_preguntas is None else n_preguntas
@@ -935,7 +977,7 @@ def texto_de_archivo(crudo: bytes) -> str:
         except ImportError:
             raise HTTPException(503, "Para leer PDF falta pypdf en el ordenador de la clase (pip install pypdf).")
         try:
-            return "\n\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(crudo)).pages[:40])
+            return "\n\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(crudo)).pages)
         except Exception:
             raise HTTPException(422, "No se puede abrir el PDF. Prueba con otro o haz fotos de sus páginas.")
     if crudo[:2] == b"PK":
@@ -970,7 +1012,7 @@ def leer_archivo(codigo: str, datos: Archivo):
     texto = re.sub(r"\s*\n\s*\n\s*", "\n\n", texto).strip()
     if len(texto) < 20:
         raise HTTPException(422, "No encuentro texto en el archivo. Si es un PDF escaneado, haz fotos de sus páginas.")
-    return {"texto": texto[:20000]}
+    return {"texto": texto}  # entero: si es largo, la IA lo lee por partes al preparar la lección
 
 
 class NuevaLeccion(BaseModel):
@@ -1000,12 +1042,12 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
         raise HTTPException(400, "Ese idioma no está en la lista.")
     if datos.nivel not in NIVELES:
         raise HTTPException(400, "El nivel tiene que ser de 0 a 5.")
-    # En los niveles altos se lee más del texto (un tema largo de universidad no cabe en 8000 letras).
     if datos.preguntas is not None and (datos.preguntas not in range(0, MAX_PREGUNTAS + 1, 5)):
         raise HTTPException(400, "El número de preguntas tiene que ser 0, 5, 10, 15, 20, 25 o 30.")
     if datos.dificultad_preguntas is not None and datos.dificultad_preguntas not in DIFICULTAD_PREGUNTAS:
         raise HTTPException(400, "La dificultad de las preguntas tiene que ser de 0 a 5.")
-    leccion = crear_leccion_con_ia(texto[:8000 if datos.nivel < 3 else 20000], datos.idioma, datos.nivel,
+    # En los niveles altos la IA lee más texto de golpe (20 000 letras); si el texto es más largo, la IA lo lee antes por partes.
+    leccion = crear_leccion_con_ia(leer_por_partes(texto, 8000 if datos.nivel < 3 else 20000), datos.idioma, datos.nivel,
                                    datos.preguntas, datos.dificultad_preguntas)
     if " ".join(datos.titulo.split()):
         leccion["titulo"] = " ".join(datos.titulo.split())[:120]
