@@ -5,6 +5,7 @@ import {
   COLOR, SIN_CONEXION, api, leer, guardar, guardarPin, nuevoId, reducirFoto, Cargando, Aviso, Icono, tomarDelSegundoPlano, hashLocal,
 } from './comun.jsx'
 import PanelClase from './Panel.jsx'
+import { EstadisticasClase, EstadisticasAlumno, progresoAlumno } from './Estadisticas.jsx'
 import { t, plural, idioma, IDIOMAS, cambiarIdioma } from './idioma.js'
 import { buscar } from './tutorBuscar.js'
 
@@ -223,6 +224,7 @@ function VistaProfe({ onVolver }) {
   const [porPreparar, setPorPreparar] = useState(null) // la lección «por preparar» que se edita
   const [materiaNueva, setMateriaNueva] = useState('') // la materia en la que se crea la lección
   const [avisoClase, setAvisoClase] = useState('') // «Publicada…» al volver de revisar una lección
+  const [alumnoVisto, setAlumnoVisto] = useState(null) // { alumno, desde }: de quién se ven las estadísticas y a qué pantalla se vuelve
   const salir = useCallback(() => {
     try { localStorage.removeItem('profe-sesion') } catch { /* nada */ }
     setSesion(null)
@@ -240,11 +242,18 @@ function VistaProfe({ onVolver }) {
   const editar = (datos) => { setEditando(datos); setPantalla('revisar') }
 
   if (pantalla === 'clase') {
-    return <ProfeClase codigo={codigo} aviso={avisoClase} onVolver={() => { setAvisoClase(''); setPantalla('clases') }} onNueva={(m) => { setAvisoClase(''); setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onEditar={editar}
+    return <ProfeClase codigo={codigo} aviso={avisoClase} onVolver={() => { setAvisoClase(''); setPantalla('clases') }} onNueva={(m) => { setAvisoClase(''); setPorPreparar(null); setMateriaNueva(m.slice(0, 40)); setPantalla('nueva') }} onNotas={() => setPantalla('notas')} onAlumno={(alumno) => { setAlumnoVisto({ alumno, desde: 'clase' }); setPantalla('alumno') }} onEditar={editar}
       onEditarPendiente={(p) => { setPorPreparar(p); setPantalla('nueva') }} />
   }
   if (pantalla === 'notas') {
+    return <EstadisticasClase codigo={codigo} onVolver={() => setPantalla('clase')} onTabla={() => setPantalla('tabla')}
+      onAlumno={(alumno) => { setAlumnoVisto({ alumno, desde: 'notas' }); setPantalla('alumno') }} />
+  }
+  if (pantalla === 'tabla') {
     return <PanelClase codigo={codigo} onVolver={() => setPantalla('clase')} />
+  }
+  if (pantalla === 'alumno' && alumnoVisto) {
+    return <EstadisticasAlumno codigo={codigo} alumno={alumnoVisto.alumno} onVolver={() => setPantalla(alumnoVisto.desde)} />
   }
   if (pantalla === 'nueva') {
     return <ProfeNuevaLeccion codigo={codigo} materia={porPreparar?.materia || materiaNueva} inicial={porPreparar} onVolver={() => setPantalla('clase')} onCreada={editar} />
@@ -504,17 +513,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   )
 }
 
-// Lo que el panel de notas dice de un alumno. «Hecha» es una lección con todas sus preguntas contestadas:
-// de una lección sin preguntas el servidor no puede saber si la ha leído, así que no cuenta.
-function progresoAlumno(notas) {
-  const conPreguntas = notas.filter(n => n.total > 0)
-  const hechas = conPreguntas.filter(n => n.respondidas === n.total)
-  const aciertos = hechas.reduce((suma, n) => suma + n.aciertos, 0)
-  const preguntas = hechas.reduce((suma, n) => suma + n.total, 0)
-  return { hechas: hechas.length, de: conPreguntas.length, aciertos, preguntas }
-}
-
-function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar }) {
+function ListaAlumnos({ codigo, alumnos, progreso, onVer, onNuevaContrasena, onEliminar }) {
   // shortcut: el orden a mano se guarda en este aparato (así funciona sin conexión); para compartirlo entre aparatos haría falta una columna en matriculas.
   const [orden, setOrden] = useState(() => leer(`profe-orden:${codigo}`, []))
   const [criterio, setCriterio] = useState('propio')
@@ -600,6 +599,7 @@ function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar
               <button type="button" className="alumno-asa" aria-label={t('Mover a {nombre}. Usa las flechas arriba y abajo.', { nombre: a.nombre })}
                 onPointerDown={ev => empezar(ev, a.id)} onPointerMove={arrastrar} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
                 onKeyDown={ev => conTeclado(ev, a.id)}>⋮⋮</button>
+              <button type="button" className="alumno-abrir" onClick={() => onVer(a)}>
               <span className="alumno-texto">
                 <span style={{ fontSize: 19, fontWeight: 650 }}>{a.nombre}</span>
                 {a.usuario && <span className="nota" style={{ display: 'block', marginTop: 2 }}>{t('Usuario: {usuario}', { usuario: a.usuario })}</span>}
@@ -610,6 +610,8 @@ function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar
                   </span>
                 )}
               </span>
+                <span className="alumno-ver">{t('Ver estadísticas')} ›</span>
+              </button>
               {a.usuario && <button onClick={() => onNuevaContrasena(a)} className="boton boton-secundario boton-pequeno alumno-contrasena">{t('Nueva contraseña')}</button>}
               <Menu nombre={a.nombre} opciones={[[t('Eliminar alumno'), () => onEliminar(a), true]]} />
             </div>
@@ -620,7 +622,7 @@ function ListaAlumnos({ codigo, alumnos, progreso, onNuevaContrasena, onEliminar
   )
 }
 
-function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEditarPendiente }) {
+function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEditar, onEditarPendiente }) {
   const [clase, setClase] = useState(() => leer(`profe-clase:${codigo}`, null)) // la copia de la última vez, al momento
   const [progreso, setProgreso] = useState(() => leer(`profe-progreso:${codigo}`, {})) // { alumno_id: progresoAlumno }
   const [error, setError] = useState('')
@@ -847,7 +849,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
       )}
 
       <section className="seccion">
-        <ListaAlumnos codigo={codigo} alumnos={clase.alumnos} progreso={progreso} onNuevaContrasena={nuevaContrasena} onEliminar={eliminarAlumno} />
+        <ListaAlumnos codigo={codigo} alumnos={clase.alumnos} progreso={progreso} onVer={onAlumno} onNuevaContrasena={nuevaContrasena} onEliminar={eliminarAlumno} />
       </section>
     </div>
   )
@@ -1803,26 +1805,21 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
   const [n, setN] = useState(0)
   const [elegida, setElegida] = useState(null)
   const [respondida, setRespondida] = useState(false)
-  const [fallada, setFallada] = useState(null) // la opción del primer intento, si falló y hay pista
   const [aciertos, setAciertos] = useState(0)
   const [terminado, setTerminado] = useState(false)
   const conTest = preguntas.length > 0 // el profe puede hacer lecciones sin preguntas
   const pregunta = preguntas[n] || { pregunta: '', opciones: [], correcta: 0 }
   const acierto = elegida === pregunta.correcta
-  // Al fallar, antes de dar la solución, la lección enseña dónde está la respuesta (sin red).
-  const pista = conTest ? buscar(leccion.contenido, `${pregunta.pregunta} ${pregunta.opciones[pregunta.correcta]}`) : []
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
 
   const responder = () => {
-    if (fallada !== null) return setRespondida(true) // segundo intento: no cuenta para la nota
     if (acierto) setAciertos(a => a + 1)
     const pendientes = leer('pendientes', [])
     pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
     guardar('pendientes', pendientes)
     onRespuesta()
-    if (!acierto && pista.length) { setFallada(elegida); setElegida(null) }
-    else setRespondida(true)
+    setRespondida(true)
   }
 
   const siguiente = () => {
@@ -1831,14 +1828,13 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
       setN(n + 1)
       setElegida(null)
       setRespondida(false)
-      setFallada(null)
     } else {
       setTerminado(true)
       onTerminar(aciertos, preguntas.length) // si hay conexión, la nota le llega al profe ya
     }
   }
 
-  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setFallada(null); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
+  const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
 
   return (
     <div className="pagina">
@@ -1890,27 +1886,19 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             {pregunta.opciones.map((opcion, i) => {
               const como = respondida
                 ? (i === pregunta.correcta ? 'opcion-buena' : i === elegida ? 'opcion-mala' : 'opcion-apagada')
-                : (i === fallada ? 'opcion-mala' : i === elegida ? 'opcion-elegida' : '')
+                : (i === elegida ? 'opcion-elegida' : '')
               return (
-                <button key={i} onClick={() => setElegida(i)} disabled={respondida || i === fallada} aria-pressed={i === elegida} className={`opcion ${como}`}>
+                <button key={i} onClick={() => setElegida(i)} disabled={respondida} aria-pressed={i === elegida} className={`opcion ${como}`}>
                   <span className="letra">
-                    {respondida && i === pregunta.correcta ? <Icono nombre="bien" tam={20} /> : (respondida && i === elegida) || (!respondida && i === fallada) ? <Icono nombre="mal" tam={20} /> : 'ABCD'[i]}
+                    {respondida && i === pregunta.correcta ? <Icono nombre="bien" tam={20} /> : respondida && i === elegida ? <Icono nombre="mal" tam={20} /> : 'ABCD'[i]}
                   </span>
                   <span>{opcion}</span>
                 </button>
               )
             })}
           </div>
-          {!respondida && fallada !== null && (
-            <div role="status" className="aviso aviso-atencion" style={{ marginTop: 22 }}>
-              <strong>{t('No es esa. Te doy una pista.')}</strong>
-              <span style={{ display: 'block', marginTop: 4 }}>{t('Mira lo que dice la lección:')}</span>
-              {pista.map((trozo, i) => <span key={i} style={{ display: 'block', marginTop: 6 }}>«{trozo.texto}» <span className="nota">{t('(en «{parte}»)', { parte: t(trozo.parte) })}</span></span>)}
-              <div style={{ marginTop: 10 }}><Escuchar key={n} texto={pista.map(trozo => trozo.texto).join(' ')} lengua={leccion.contenido.idioma} /></div>
-            </div>
-          )}
           {!respondida
-            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>{fallada === null ? t('Comprobar') : t('Probar otra vez')}</button>
+            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>{t('Comprobar')}</button>
             : (
               <>
                 <div role="status" className={`aviso ${acierto ? 'aviso-ok' : 'aviso-error'}`} style={{ marginTop: 22 }}>

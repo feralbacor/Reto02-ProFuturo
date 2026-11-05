@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 import zipfile
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
@@ -1229,7 +1229,57 @@ def borrar_clase(codigo: str):
     return {"ok": True}
 
 
+@app.get("/api/clases/{codigo}/estadisticas", dependencies=SOLO_PROFE)
+def estadisticas_clase(codigo: str):
+    """Lo que el panel de notas no cuenta: qué preguntas cuestan más, qué ha respondido cada alumno, cuándo se trabaja y sus dudas.
+    Como en el panel, de cada pregunta cuenta la última respuesta del alumno, y solo las lecciones publicadas y los alumnos de la clase."""
+    with closing(db()) as c:
+        codigo = buscar_clase(c, codigo)["codigo"]
+        lecciones = {l["id"]: {"titulo": l["titulo"], "preguntas": json.loads(l["contenido"])["preguntas"]} for l in c.execute(
+            "SELECT id, titulo, contenido FROM lecciones WHERE clase = ? AND publicada = 1", (codigo,))}
+        respuestas = c.execute("""
+            SELECT r.* FROM respuestas r JOIN lecciones l ON l.id = r.leccion_id
+            JOIN matriculas m ON m.alumno = r.alumno AND m.clase = l.clase
+            WHERE l.clase = ? AND l.publicada = 1
+        """, (codigo,)).fetchall()
+        dudas = c.execute("""
+            SELECT d.alumno, COUNT(*) AS n FROM dudas d JOIN lecciones l ON l.id = d.leccion_id
+            JOIN matriculas m ON m.alumno = d.alumno AND m.clase = l.clase
+            WHERE l.clase = ? GROUP BY d.alumno
+        """, (codigo,)).fetchall()
+
+    hoy = datetime.now().astimezone().date()
+    actividad = {str(hoy - timedelta(days=i)): 0 for i in range(6, -1, -1)}
+    ultimas = {}
+    for r in respuestas:
+        momento = instante(r["fecha"])
+        if momento is None or not 0 <= r["pregunta"] < len(lecciones[r["leccion_id"]]["preguntas"]):
+            continue
+        if str(momento.date()) in actividad:
+            actividad[str(momento.date())] += 1
+        clave = (r["alumno"], r["leccion_id"], r["pregunta"])
+        if clave not in ultimas or (momento, r["id"]) > ultimas[clave][0]:
+            ultimas[clave] = ((momento, r["id"]), r["respuesta"])
+
+    preguntas, por_alumno = {}, {}
+    for (alumno, leccion_id, i), (_, respuesta) in ultimas.items():
+        leccion = lecciones[leccion_id]
+        pregunta = leccion["preguntas"][i]
+        cuenta = preguntas.setdefault((leccion_id, i), {"leccion": leccion["titulo"], "pregunta": pregunta["pregunta"], "aciertos": 0, "respuestas": 0})
+        cuenta["respuestas"] += 1
+        if respuesta == pregunta["correcta"]:
+            cuenta["aciertos"] += 1
+        por_alumno.setdefault(alumno, {}).setdefault(leccion_id, {})[i] = respuesta
+    return {
+        "preguntas": sorted(preguntas.values(), key=lambda p: (p["aciertos"] / p["respuestas"], -p["respuestas"], p["pregunta"])),  # las que más cuestan, primero
+        "lecciones": {id_: l["preguntas"] for id_, l in lecciones.items()},
+        "respuestas": por_alumno,  # {alumno: {lección: {número de pregunta: opción elegida}}}
+        "actividad": [{"dia": dia, "respuestas": n} for dia, n in actividad.items()],
+        "dudas": {d["alumno"]: d["n"] for d in dudas},
+    }
+
+
 # Panel de notas: es de ChatGPT (ver REPARTO.md). Sus rutas están en panel.py y piden el PIN del profe.
-from panel import router as router_panel  # noqa: E402
+from panel import instante, router as router_panel  # noqa: E402
 
 app.include_router(router_panel, dependencies=SOLO_PROFE)
