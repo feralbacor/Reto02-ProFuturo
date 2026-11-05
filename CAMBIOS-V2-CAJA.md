@@ -116,5 +116,5 @@ Conviene saber:
 
 ## Lo que falta de la v2
 
-- **Lección con pruebas o sin ellas, y examen.** En `main` ya hay un commit con eso (`f4e1981`); falta unirlo a esta rama.
+- ~~Lección con pruebas o sin ellas, y examen~~: ya está unido a esta rama desde `main` (`f4e1981`). Sin conexión, el profe ve las respuestas de desarrollo y sus notas, pero no puede crear exámenes ni lecciones, porque se hacen desde «Nueva lección» y ese botón está bloqueado. «Revisar la nota» de una respuesta de desarrollo no se bloquea: sin conexión da el error de «sin conexión».
 - **IA en cada aparato.** El plan es usar la de la caja si se ve; si no, un modelo pequeño en el navegador cuando haya WebGPU; y si tampoco, la corrección espera a que vuelva la caja.
