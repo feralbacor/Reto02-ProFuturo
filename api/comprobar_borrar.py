@@ -54,4 +54,30 @@ for entrar in (lambda: main.unirse("CLASEB", main.Unirse(alumno_id="a1")),
 assert not cuantas("SELECT COUNT(*) FROM alumnos WHERE nombre = 'Bea'")  # el error no deja medio alumno creado
 main.ocultar_o_mostrar_clase("CLASEB", main.Oculta(oculta=False))
 assert ve_ana() == ["l3"]
-print("Ocultar, publicar y eliminar lecciones y clases: todo bien")
+# Quitar preguntas: se puede mientras nadie ha contestado; después no, porque las respuestas guardan la posición.
+P = lambda n: {"pregunta": n, "opciones": [n + "1", n + "2", n + "3", n + "4"], "correcta": 0, "porque": "Porque sí."}
+L = lambda *ps: {"titulo": "T", "lectura_facil": "Texto.", "explicacion_ejemplo": "Ejemplo.", "preguntas": list(ps)}
+import json  # noqa: E402
+with closing(main.db()) as c, c:
+    c.execute("INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES ('l4', 'CLASEB', 'T', ?, ?, 1)", (json.dumps(L(P("a"), P("b"), P("c"))), main.ahora()))
+respondida = lambda: next(l["respondida"] for l in main.ver_clase("CLASEB")["lecciones"] if l["id"] == "l4")
+preguntas = lambda: [p["pregunta"] for p in json.loads(main.db().execute("SELECT contenido FROM lecciones WHERE id = 'l4'").fetchone()[0])["preguntas"]]
+assert not respondida()
+with closing(main.db()) as c, c:
+    c.execute("INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES ('l5', 'CLASEB', 'T', ?, ?, 0)", (json.dumps(L(P("a"))), main.ahora()))
+main.guardar_leccion("CLASEB", "l5", main.GuardarLeccion(leccion=L()))  # se puede quedar sin ninguna pregunta
+assert json.loads(main.db().execute("SELECT contenido FROM lecciones WHERE id = 'l5'").fetchone()[0])["preguntas"] == []
+main.guardar_leccion("CLASEB", "l4", main.GuardarLeccion(leccion=L(P("a"), P("c"))))
+assert preguntas() == ["a", "c"]
+with closing(main.db()) as c, c:
+    c.execute("INSERT INTO respuestas VALUES ('r4', 'a1', 'l4', 1, 0, ?)", (main.ahora(),))
+assert respondida()
+try:
+    main.guardar_leccion("CLASEB", "l4", main.GuardarLeccion(leccion=L(P("a"))))
+    raise SystemExit("Ha quitado una pregunta con respuestas")
+except main.HTTPException as e:
+    assert e.status_code == 409 and preguntas() == ["a", "c"]
+main.guardar_leccion("CLASEB", "l4", main.GuardarLeccion(leccion=L(P("a"), P("c cambiada"))))  # cambiar el texto sigue valiendo
+main.guardar_leccion("CLASEB", "l4", main.GuardarLeccion(leccion=L(P("a"), P("c cambiada"), P("d"))))  # y añadir al final también
+assert preguntas() == ["a", "c cambiada", "d"]
+print("Ocultar, publicar y eliminar lecciones y clases, y quitar preguntas: todo bien")
