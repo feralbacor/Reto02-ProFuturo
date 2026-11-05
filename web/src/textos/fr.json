@@ -305,5 +305,20 @@
  "Eso no está en esta lección. Pregúntaselo a tu profe.": "Ce n'est pas dans cette leçon. Demande à ton prof.",
  "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección.": "Ça n'a rien à voir avec cette leçon, alors je ne peux pas te répondre. Pose-moi une question sur la leçon.",
  "No hay ninguna clase con ese código.": "Il n'y a aucune classe avec ce code.",
- "El alumno ya no está en esta clase.": "L'élève n'est plus dans cette classe."
+ "El alumno ya no está en esta clase.": "L'élève n'est plus dans cette classe.",
+ "Opciones de «{nombre}»": "Options de « {nombre} »",
+ "Eliminar la clase": "Supprimer la classe",
+ "¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.": "Supprimer la classe « {nombre} » ? Ses leçons et les notes de ses élèves seront supprimées. C'est définitif.",
+ "Ocultar a los alumnos": "Cacher aux élèves",
+ "Eliminar la lección": "Supprimer la leçon",
+ "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Supprimer la leçon « {titulo} » ? Les notes et les questions de tes élèves seront aussi supprimées. C'est définitif.",
+ "Contenido": "Contenu",
+ "Cantidad": "Quantité",
+ "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "Si tu n'as ni photo ni fichier, écris ou colle ici le texte ou l'information.",
+ "Oculta": "Cachée",
+ "Mostrar a los alumnos": "Montrer aux élèves",
+ "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "Cette classe est cachée : tes élèves ne la voient pas et son code ne les laisse pas entrer. Pour la montrer, appuie sur ⋮ dans « Mes classes ».",
+ "Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
+ "Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Lecture des photos et des fichiers et préparation de la leçon… Cela peut prendre entre 1 et 10 minutes, selon le niveau et les questions choisis. Merci de patienter.",
+ "La IA no ha podido preparar la lección. Prueba otra vez.": "L'IA n'a pas pu préparer la leçon. Réessaie."
 }

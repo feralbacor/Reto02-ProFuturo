@@ -38,7 +38,8 @@ TABLAS = """
 CREATE TABLE IF NOT EXISTS clases (
     codigo TEXT PRIMARY KEY,
     nombre TEXT NOT NULL,
-    creada TEXT NOT NULL
+    creada TEXT NOT NULL,
+    oculta INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS alumnos (
     id TEXT PRIMARY KEY,
@@ -115,6 +116,9 @@ def preparar_bd():
             os.replace(DB_PATH, DB_PATH.replace(".db", f"-antigua-{datetime.now():%Y%m%d%H%M%S}.db"))
     with closing(db()) as c, c:
         c.executescript(TABLAS)
+        # Bases de datos que ya existían: la columna se añade sin tocar lo demás.
+        if "oculta" not in [fila[1] for fila in c.execute("PRAGMA table_info(clases)")]:
+            c.execute("ALTER TABLE clases ADD COLUMN oculta INTEGER NOT NULL DEFAULT 0")
 
 
 preparar_bd()
@@ -128,9 +132,10 @@ def normalizar_codigo(codigo: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", codigo.upper())
 
 
-def buscar_clase(c, codigo):
-    clase = c.execute("SELECT codigo, nombre FROM clases WHERE codigo = ?", (normalizar_codigo(codigo),)).fetchone()
-    if not clase:
+def buscar_clase(c, codigo, para_alumno=False):
+    clase = c.execute("SELECT codigo, nombre, oculta FROM clases WHERE codigo = ?", (normalizar_codigo(codigo),)).fetchone()
+    # Para un alumno, una clase oculta es como si no existiera: su código no le deja entrar.
+    if not clase or (para_alumno and clase["oculta"]):
         raise HTTPException(404, "No hay ninguna clase con ese código. Revisa que esté bien escrito.")
     return clase
 
@@ -288,6 +293,13 @@ DIFICULTAD_PREGUNTAS = {
     5: "muy difíciles: de razonar en varios pasos, casos nuevos y excepciones, nada de memoria; las incorrectas son casi correctas y solo se descartan entendiendo bien el tema",
 }
 MAX_PREGUNTAS = 30
+# Tope de lo que puede escribir la IA, según el nivel y las preguntas. A veces entra en bucle repitiendo frases
+# (1 de 3 con un texto corto): sin tope sigue unos 20 min y deja a la cola esperando. Si llega al tope, se reintenta.
+TOKENS_LECTURA = {0: 500, 1: 800, 2: 1500, 3: 3000, 4: 5000, 5: 8000}
+TOKENS_POR_PREGUNTA = 200
+# Lecciones que la IA está preparando ahora, como (clase, id): así un segundo intento no se pone a la cola detrás del primero.
+# shortcut: solo vale con un proceso de la API; con varios, pasarlo a la base de datos.
+PREPARANDO = set()
 
 PROMPT_LECCION = """Eres profesor. Con el TEXTO de abajo prepara una lección en {idioma}.
 Escribe TODO en {idioma} (título, lectura, ejemplo, preguntas y respuestas), aunque el TEXTO esté en otro idioma.
@@ -504,10 +516,11 @@ def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificult
                  '  - "porque": una frase que explica por qué es la buena, con lo que dice el texto.\n'
                  '  - "incorrectas": 3 respuestas cortas que parezcan posibles pero que, según el texto, no son verdad. Distintas entre sí y de la buena.')
     prompt = PROMPT_LECCION.format(texto=texto, idioma=IDIOMAS[idioma], nivel=nivel, como=como, largo=largo, frases=frases, preguntas=preguntas)
+    # Sin pasarse del contexto: lo que no cabe seguiría escribiéndose. Un token son 3 letras o más, así que len // 2 va sobrado.
+    tope = min(TOKENS_LECTURA[nivel] + TOKENS_POR_PREGUNTA * n_preguntas, CONTEXTO - len(prompt) // 2)
     for _ in range(2):  # si sale mal, se intenta una vez más
-        # Sin tope de palabras (-2: hasta llenar el contexto, así no se queda colgada repitiendo) y sin prisa:
-        # un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
-        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel, n_preguntas, dificultad), max_tokens=-2, espera=1800)
+        # Sin prisa: un nivel 5 de un tema largo tarda de 5 a 15 min en un Mac M3.
+        respuesta = preguntar_ia(prompt, formato=esquema_con_nivel(nivel, n_preguntas, dificultad), max_tokens=tope, espera=1800)
         try:
             leccion = json.loads(respuesta[respuesta.find("{"): respuesta.rfind("}") + 1])
         except json.JSONDecodeError:
@@ -516,7 +529,7 @@ def crear_leccion_con_ia(texto, idioma="es", nivel=1, n_preguntas=None, dificult
         # Si al quitar las repetidas quedan menos de la mitad de las pedidas, se intenta otra vez.
         if leccion_valida(leccion) and len(leccion["preguntas"]) * 2 >= n_preguntas:
             return {**barajar_opciones(leccion), "idioma": idioma, "nivel": nivel, "dificultad_preguntas": dificultad}
-    raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Crear lección».")
+    raise HTTPException(502, "La IA no ha preparado bien la lección. Pulsa otra vez «Preparar la lección».")
 
 
 # ---------- Dudas («Tengo una duda») ----------
@@ -619,7 +632,7 @@ def crear_clase(datos: NuevaClase, x_sesion_profe: str | None = Header(default=N
 
 def resumen_clases(c, profe: str | None = None):
     return [dict(f) for f in c.execute(f"""
-        SELECT c.codigo, c.nombre,
+        SELECT c.codigo, c.nombre, c.oculta,
                (SELECT COUNT(*) FROM matriculas m WHERE m.clase = c.codigo) AS alumnos,
                (SELECT COUNT(*) FROM lecciones l WHERE l.clase = c.codigo) AS lecciones
         FROM clases c {"WHERE c.codigo IN (SELECT clase FROM clases_profe WHERE profe = ?)" if profe else ""}
@@ -700,6 +713,8 @@ def traer_clase(datos: TraerClase, profe: str = Depends(solo_con_sesion)):
 
 @app.get("/api/clases/{codigo}", dependencies=SOLO_PROFE)
 def ver_clase(codigo: str):
+    # Antes de leer las lecciones: si una acaba justo ahora, o sale aquí o sale en la lista.
+    preparando = [i for k, i in list(PREPARANDO) if k == normalizar_codigo(codigo)]
     with closing(db()) as c:
         clase = buscar_clase(c, codigo)
         alumnos = c.execute("""
@@ -724,6 +739,7 @@ def ver_clase(codigo: str):
         "alumnos": [dict(a) for a in alumnos],
         "dudas": [dict(d) for d in dudas],
         "lecciones": lecciones,
+        "preparando": preparando,
         "materias": list(dict.fromkeys(l["materia"] for l in lecciones)),  # la más reciente primero
     }
 
@@ -746,7 +762,7 @@ def crear_alumno(datos: NuevoAlumno):
         raise HTTPException(400, "El usuario tiene que tener de 3 a 20 letras (sin tildes ni ñ) o números, sin espacios.")
     comprobar_contrasena(datos.contrasena)
     with closing(db()) as c, c:
-        clase = buscar_clase(c, datos.clase) if datos.clase and not datos.alumno_id else None  # un código mal escrito sigue dando error
+        clase = buscar_clase(c, datos.clase, para_alumno=True) if datos.clase and not datos.alumno_id else None  # un código mal escrito sigue dando error
         if c.execute("SELECT 1 FROM cuentas_alumno WHERE usuario = ?", (usuario,)).fetchone():
             libre = usuario_libre(c, usuario)
             raise HTTPException(409, {"mensaje": f"El usuario «{usuario}» ya existe. Prueba con «{libre}».", "sugerencia": libre})
@@ -823,7 +839,7 @@ class Unirse(BaseModel):
 def unirse(codigo: str, datos: Unirse):
     """Un alumno que ya tiene usuario entra en otra clase."""
     with closing(db()) as c, c:
-        clase = buscar_clase(c, codigo)
+        clase = buscar_clase(c, codigo, para_alumno=True)
         if not c.execute("SELECT 1 FROM cuentas_alumno WHERE alumno = ?", (datos.alumno_id,)).fetchone():
             # Solo pasa con la versión vieja de la app (la de entrar solo con el nombre), que siga abierta.
             raise HTTPException(404, "Hay una versión nueva de la app: ciérrala del todo y vuelve a abrirla.")
@@ -838,7 +854,7 @@ def clases_del_alumno(c, alumno_id: str):
     # Todo lo que el alumno necesita sin conexión: sus clases y las lecciones publicadas enteras.
     clases = c.execute("""
         SELECT c.codigo, c.nombre FROM matriculas m JOIN clases c ON c.codigo = m.clase
-        WHERE m.alumno = ? ORDER BY m.fecha
+        WHERE m.alumno = ? AND c.oculta = 0 ORDER BY m.fecha
     """, (alumno_id,)).fetchall()
     resultado = []
     for clase in clases:
@@ -1046,18 +1062,25 @@ def nueva_leccion(codigo: str, datos: NuevaLeccion):
         raise HTTPException(400, "El número de preguntas tiene que ser 0, 5, 10, 15, 20, 25 o 30.")
     if datos.dificultad_preguntas is not None and datos.dificultad_preguntas not in DIFICULTAD_PREGUNTAS:
         raise HTTPException(400, "La dificultad de las preguntas tiene que ser de 0 a 5.")
-    # En los niveles altos la IA lee más texto de golpe (20 000 letras); si el texto es más largo, la IA lo lee antes por partes.
-    leccion = crear_leccion_con_ia(leer_por_partes(texto, 8000 if datos.nivel < 3 else 20000), datos.idioma, datos.nivel,
-                                   datos.preguntas, datos.dificultad_preguntas)
-    if " ".join(datos.titulo.split()):
-        leccion["titulo"] = " ".join(datos.titulo.split())[:120]
     leccion_id = datos.id or str(uuid.uuid4())
-    with closing(db()) as c, c:
-        leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
-        c.execute(
-            "INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 0)",
-            (leccion_id, clase["codigo"], leccion["titulo"], json.dumps(leccion, ensure_ascii=False), ahora()),
-        )
+    en_marcha = (clase["codigo"], leccion_id)
+    if en_marcha in PREPARANDO:
+        raise HTTPException(409, "Esta lección ya se está preparando.")
+    PREPARANDO.add(en_marcha)
+    try:
+        # En los niveles altos la IA lee más texto de golpe (20 000 letras); si el texto es más largo, la IA lo lee antes por partes.
+        leccion = crear_leccion_con_ia(leer_por_partes(texto, 8000 if datos.nivel < 3 else 20000), datos.idioma, datos.nivel,
+                                       datos.preguntas, datos.dificultad_preguntas)
+        if " ".join(datos.titulo.split()):
+            leccion["titulo"] = " ".join(datos.titulo.split())[:120]
+        with closing(db()) as c, c:
+            leccion["materia"] = materia_de(c, clase["codigo"], datos.materia)
+            c.execute(
+                "INSERT INTO lecciones (id, clase, titulo, contenido, fecha, publicada) VALUES (?, ?, ?, ?, ?, 0)",
+                (leccion_id, clase["codigo"], leccion["titulo"], json.dumps(leccion, ensure_ascii=False), ahora()),
+            )
+    finally:  # después de guardarla: quien pregunta la ve en la lista o en PREPARANDO, nunca en ninguna
+        PREPARANDO.discard(en_marcha)
     return {"id": leccion_id, "leccion": leccion}
 
 
@@ -1097,6 +1120,58 @@ def guardar_leccion(codigo: str, leccion_id: str, datos: GuardarLeccion):
             (leccion["titulo"].strip(), json.dumps(leccion, ensure_ascii=False), int(datos.publicar), leccion_id),
         )
     return {"ok": True, "materia": leccion["materia"]}
+
+
+class Publicada(BaseModel):
+    publicada: bool
+
+
+@app.put("/api/clases/{codigo}/lecciones/{leccion_id}/publicada", dependencies=SOLO_PROFE)
+def publicar_u_ocultar(codigo: str, leccion_id: str, datos: Publicada):
+    """Ocultar quita la lección de los móviles en su próxima sincronización; sus notas se quedan para cuando se vuelva a publicar."""
+    with closing(db()) as c, c:
+        buscar_leccion(c, codigo, leccion_id)
+        c.execute("UPDATE lecciones SET publicada = ? WHERE id = ?", (int(datos.publicada), leccion_id))
+    return {"publicada": datos.publicada}
+
+
+def borrar_lecciones(c, donde: str, valor: str):
+    # Primero lo que cuelga de cada lección: sus respuestas y sus dudas.
+    for tabla in ("respuestas", "dudas"):
+        c.execute(f"DELETE FROM {tabla} WHERE leccion_id IN (SELECT id FROM lecciones WHERE {donde} = ?)", (valor,))
+    c.execute(f"DELETE FROM lecciones WHERE {donde} = ?", (valor,))
+
+
+@app.delete("/api/clases/{codigo}/lecciones/{leccion_id}", dependencies=SOLO_PROFE)
+def borrar_leccion(codigo: str, leccion_id: str):
+    with closing(db()) as c, c:
+        borrar_lecciones(c, "id", buscar_leccion(c, codigo, leccion_id)["id"])
+    return {"ok": True}
+
+
+class Oculta(BaseModel):
+    oculta: bool
+
+
+@app.put("/api/clases/{codigo}/oculta", dependencies=SOLO_PROFE)
+def ocultar_o_mostrar_clase(codigo: str, datos: Oculta):
+    """Oculta: sale de los móviles en su próxima sincronización y su código no deja entrar. Las respuestas que el móvil
+    tuviera sin enviar se siguen guardando, y la clase vuelve entera al mostrarla."""
+    with closing(db()) as c, c:
+        c.execute("UPDATE clases SET oculta = ? WHERE codigo = ?", (int(datos.oculta), buscar_clase(c, codigo)["codigo"]))
+    return {"oculta": datos.oculta}
+
+
+@app.delete("/api/clases/{codigo}", dependencies=SOLO_PROFE)
+def borrar_clase(codigo: str):
+    """Se borran sus lecciones (con sus notas y dudas) y quién está en ella. Los alumnos siguen, por si están en otras clases."""
+    with closing(db()) as c, c:
+        codigo = buscar_clase(c, codigo)["codigo"]
+        borrar_lecciones(c, "clase", codigo)
+        for tabla in ("matriculas", "clases_profe", "pines_profe"):
+            c.execute(f"DELETE FROM {tabla} WHERE clase = ?", (codigo,))
+        c.execute("DELETE FROM clases WHERE codigo = ?", (codigo,))
+    return {"ok": True}
 
 
 # Panel de notas: es de ChatGPT (ver REPARTO.md). Sus rutas están en panel.py y piden el PIN del profe.

@@ -305,5 +305,20 @@
  "Eso no está en esta lección. Pregúntaselo a tu profe.": "That's not in this lesson. Ask your teacher.",
  "Eso no tiene que ver con esta lección, así que no te lo puedo contestar. Pregúntame algo sobre la lección.": "That has nothing to do with this lesson, so I can't answer it. Ask me something about the lesson.",
  "No hay ninguna clase con ese código.": "There's no class with that code.",
- "El alumno ya no está en esta clase.": "The student is no longer in this class."
+ "El alumno ya no está en esta clase.": "The student is no longer in this class.",
+ "Opciones de «{nombre}»": "Options for «{nombre}»",
+ "Eliminar la clase": "Delete the class",
+ "¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.": "Delete the class «{nombre}»? Its lessons and its students' marks will be deleted. This cannot be undone.",
+ "Ocultar a los alumnos": "Hide from students",
+ "Eliminar la lección": "Delete the lesson",
+ "¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.": "Delete the lesson «{titulo}»? Your students' marks and questions on it will be deleted too. This cannot be undone.",
+ "Contenido": "Content",
+ "Cantidad": "Amount",
+ "Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.": "If you have no photo or file, type or paste the text or information here.",
+ "Oculta": "Hidden",
+ "Mostrar a los alumnos": "Show to students",
+ "Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».": "This class is hidden: your students can't see it and its code doesn't let them in. To show it, press ⋮ in «My classes».",
+ "Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Preparing the lesson… It can take between 1 and 10 minutes, depending on the level and questions you chose. Please be patient.",
+ "Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.": "Reading the photos and files and preparing the lesson… It can take between 1 and 10 minutes, depending on the level and questions you chose. Please be patient.",
+ "La IA no ha podido preparar la lección. Prueba otra vez.": "The AI could not prepare the lesson. Try again."
 }

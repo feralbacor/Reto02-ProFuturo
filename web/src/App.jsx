@@ -34,6 +34,24 @@ function Volver({ onClick, disabled, children }) {
   return <button className="boton boton-fantasma volver" onClick={onClick} disabled={disabled}><Icono nombre="volver" />{children ?? t('Volver')}</button>
 }
 
+// El botón ⋮ a la derecha de una fila: abre debajo sus opciones. Cada opción es [texto, acción, peligrosa].
+function Menu({ nombre, opciones }) {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <div className="menu">
+      <button className="boton boton-secundario menu-boton" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}
+        aria-label={t('Opciones de «{nombre}»', { nombre })}>⋮</button>
+      {abierto && (
+        <div className="menu-lista">
+          {opciones.map(([texto, accion, peligrosa]) => (
+            <button key={texto} className={`boton boton-secundario ${peligrosa ? 'menu-peligro' : ''}`} onClick={() => { setAbierto(false); accion() }}>{texto}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------- Inicio ----------
 function App() {
   // Con la sesión del profe abierta se entra directo en sus clases: solo se sale con «Salir».
@@ -146,6 +164,24 @@ async function prepararLeccion(item, alAvanzar) {
     alAvanzar(item)
   }
   return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id } })
+}
+
+// La IA tarda minutos y Cloudflare corta la espera a los 100 s, aunque la API siga trabajando: se le va preguntando.
+// Devuelve la lección cuando está. Si de verdad no hay conexión, lanza SIN_CONEXION; si la IA ha dejado de prepararla, lo dice.
+async function esperarLeccion(item) {
+  for (let fallos = 0; fallos < 3;) {
+    try {
+      const clase = await api(`/api/clases/${encodeURIComponent(item.codigo)}`)
+      fallos = 0
+      if (clase.lecciones.some(l => l.id === item.id)) return prepararLeccion(item) // ya está hecha: la API la devuelve sin volver a prepararla
+      if (!clase.preparando?.includes(item.id)) throw Object.assign(new Error('La IA no ha podido preparar la lección. Prueba otra vez.'), { estado: 409 })
+    } catch (e) {
+      if (!esPasajero(e)) throw e
+      fallos++
+    }
+    await new Promise(seguir => setTimeout(seguir, 10000))
+  }
+  throw new Error(SIN_CONEXION)
 }
 
 let preparandoPendientes = false
@@ -311,6 +347,28 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     }
   }
 
+  const ocultarClase = async (c) => {
+    try {
+      await api(`/api/clases/${encodeURIComponent(c.codigo)}/oculta`, { method: 'PUT', body: { oculta: !c.oculta } })
+      setClases(todas => { const nuevas = todas.map(x => x.codigo === c.codigo ? { ...x, oculta: c.oculta ? 0 : 1 } : x); guardar('profe-clases', nuevas); return nuevas })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  const borrarClase = async (c) => {
+    if (!window.confirm(t('¿Eliminar la clase «{nombre}»? Se borran sus lecciones y las notas de sus alumnos. No se puede deshacer.', { nombre: c.nombre }))) return
+    try {
+      await api(`/api/clases/${encodeURIComponent(c.codigo)}`, { method: 'DELETE' })
+      // Lo que quedara por enviar de esa clase ya no tiene adónde ir.
+      guardarCambiosProfe(leerCambiosProfe().filter(x => x.codigo !== c.codigo))
+      guardarPendientesProfe(leerPendientesProfe().filter(x => x.codigo !== c.codigo))
+      setClases(todas => { const quedan = todas.filter(x => x.codigo !== c.codigo); guardar('profe-clases', quedan); return quedan })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const hay = clases?.length > 0
   return (
     <div className="pagina">
@@ -326,17 +384,24 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
       {hay && (
         <div className="lista" style={{ marginTop: 24 }}>
           {clases.map(c => (
-            <button key={c.codigo} className="fila" onClick={() => onAbrir(c.codigo)}>
+            <div key={c.codigo} className="fila-con-menu">
+            <button className="fila" onClick={() => onAbrir(c.codigo)}>
               <span className="fila-texto">
                 <span className="fila-titulo">{c.nombre}</span>
                 <span className="fila-detalle">
                   <span className="insignia" style={{ fontFamily: 'var(--mono)', letterSpacing: '0.08em' }}>{c.codigo}</span>
+                  {!!c.oculta && <span className="insignia">{t('Oculta')}</span>}
                   {plural(c.alumnos, '{n} alumno', '{n} alumnos')} · {plural(c.lecciones, '{n} lección', '{n} lecciones')}
                   {pendientes.some(p => p.codigo === c.codigo) && ` · ${t('{n} por preparar', { n: pendientes.filter(p => p.codigo === c.codigo).length })}`}
                 </span>
               </span>
               <Icono nombre="seguir" className="icono-final" />
             </button>
+            <Menu nombre={c.nombre} opciones={[
+              [c.oculta ? t('Mostrar a los alumnos') : t('Ocultar a los alumnos'), () => ocultarClase(c)],
+              [t('Eliminar la clase'), () => borrarClase(c), true],
+            ]} />
+            </div>
           ))}
         </div>
       )}
@@ -440,6 +505,19 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
   }
   // La lección entera ya viene con la clase: se abre también sin conexión.
   const abrirLeccion = (l) => onEditar({ id: l.id, leccion: { ...l.contenido, materia: l.materia }, publicada: l.publicada, cambio: l.cambio })
+  const cambiarLeccion = async (l, borrar) => {
+    if (borrar && !window.confirm(t('¿Eliminar la lección «{titulo}»? Se borran también las notas y las dudas de tus alumnos. No se puede deshacer.', { titulo: l.titulo }))) return
+    try {
+      const ruta = `/api/clases/${encodeURIComponent(codigo)}/lecciones/${l.id}`
+      await (borrar ? api(ruta, { method: 'DELETE' }) : api(`${ruta}/publicada`, { method: 'PUT', body: { publicada: !l.publicada } }))
+      guardarCambiosProfe(borrar
+        ? leerCambiosProfe().filter(x => x.id !== l.id) // su cambio sin enviar ya no tiene adónde ir
+        : leerCambiosProfe().map(x => x.id === l.id ? { ...x, publicar: !l.publicada } : x)) // que al enviarse no la vuelva a publicar
+      cargar()
+    } catch (e) {
+      setError(e.message)
+    }
+  }
   const quitarPendiente = (p) => {
     if (window.confirm(t('¿Quitar esta lección sin preparar? Se borran sus fotos y su texto de este aparato.'))) {
       guardarPendientesProfe(leerPendientesProfe().filter(x => x.id !== p.id))
@@ -483,6 +561,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
         <span className="nota" style={{ margin: 0 }}>{t('Código para que entren tus alumnos')}</span>
         <span className="codigo-clase-texto">{clase.codigo}</span>
       </div>
+      {!!clase.oculta && <p className="aviso aviso-atencion">{t('Esta clase está oculta: tus alumnos no la ven y su código no deja entrar. Para mostrarla, pulsa ⋮ en «Mis clases».')}</p>}
 
       <Aviso texto={error} />
       <Aviso texto={aviso} color={COLOR.verde} />
@@ -520,12 +599,18 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onEditar, onEdi
             <h3 className="subtitulo">{t(materia)}</h3>
             <div className="lista">
               {lecciones.map(l => (
-                <button key={l.id} onClick={() => abrirLeccion(l)} className="fila">
-                  <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
-                  {l.cambio && <span className="insignia">{l.cambio.error ? t('Error al guardar') : t('Sin enviar')}</span>}
-                  <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
-                  <Icono nombre="seguir" className="icono-final" />
-                </button>
+                <div key={l.id} className="fila-con-menu">
+                  <button onClick={() => abrirLeccion(l)} className="fila">
+                    <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                    {l.cambio && <span className="insignia">{l.cambio.error ? t('Error al guardar') : t('Sin enviar')}</span>}
+                    <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
+                    <Icono nombre="seguir" className="icono-final" />
+                  </button>
+                  <Menu nombre={l.titulo} opciones={[
+                    [l.publicada ? t('Ocultar a los alumnos') : t('Publicar'), () => cambiarLeccion(l, false)],
+                    [t('Eliminar la lección'), () => cambiarLeccion(l, true), true],
+                  ]} />
+                </div>
               ))}
             </div>
           </div>
@@ -682,11 +767,15 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(fotos.length ? t('Leyendo las fotos y los archivos y preparando la lección…') : t('Preparando la lección… Tarda alrededor de un minuto.'))
+    setOcupado(t(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.' : 'Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
     let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, preguntas: cuantas, dificultad_preguntas: dificultad, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
     try {
-      const r = await prepararLeccion(item, (i) => { item = i })
+      const r = await prepararLeccion(item, (i) => { item = i }).catch((e) => {
+        // 409: ya se estaba preparando (se pulsó otra vez o «Preparar ahora»). Pasajero: puede que solo se haya cortado la espera.
+        if (e.estado !== 409 && (!esPasajero(e) || fallaLaIa(e))) throw e
+        return esperarLeccion(item)
+      })
       if (inicial) guardarPendientesProfe(leerPendientesProfe().filter(p => p.id !== item.id))
       onCreada({ id: r.id, leccion: r.leccion, publicada: 0 })
     } catch (e) {
@@ -731,7 +820,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Las fotos o los archivos')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Contenido')}</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />{t('Hacer una foto')}</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />{t('Elegir fotos')}</button>
@@ -763,6 +852,12 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
           </>
         )}
         {leyendo && espera}
+        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '20px 0 10px' }}>
+          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Si no tienes foto ni archivo, escribe o pega aquí el texto o la información.')}
+        </label>
+        <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
+          placeholder={t('El texto de la página del libro…')} />
+        {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
       </section>
 
       <section className="seccion">
@@ -774,7 +869,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
       <section className="seccion">
         <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('Las preguntas')}</h2>
-        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cuántas')}</label>
+        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cantidad')}</label>
         <Barra id="cuantas-preguntas" valores={[0, 5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
           nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('Sin preguntas'), t('30 preguntas')]} />
         {cuantas > 0 && (
@@ -792,19 +887,7 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{leidas ? t('Revisa el texto') : t('El texto')}</h2>
-        <label htmlFor="texto-leccion" className="pista" style={{ display: 'block', margin: '0 0 10px' }}>
-          {leidas ? t('Esto es lo que pone en las fotos y archivos. Corrige lo que haga falta.') : t('Lo que pone en la página. Si no tienes foto, escríbelo o pégalo aquí.')}
-        </label>
-        <textarea id="texto-leccion" className="campo" value={texto} onChange={e => setTexto(e.target.value)} rows={10} disabled={!!ocupado}
-          placeholder={t('El texto de la página del libro…')} />
-        {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
-      </section>
-
-
-
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">6</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>
@@ -812,8 +895,8 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       </section>
 
       <Aviso texto={error} />
-      {!leyendo && espera}
       <div className="acciones-pie" style={{ marginTop: 28 }}>
+        {!leyendo && espera}
         <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
       </div>
     </div>
