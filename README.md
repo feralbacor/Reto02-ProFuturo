@@ -23,6 +23,7 @@ Mochila funciona en **modo caja**. Un ordenador de la clase, la **caja**, contie
 8. [Datos, copias y seguridad](#8-datos-copias-y-seguridad)
 9. [Otras formas de arrancarlo](#9-otras-formas-de-arrancarlo)
 10. [Demo, idiomas y documentación](#10-demo-idiomas-y-documentación)
+11. [Apagar la caja](#11-apagar-la-caja)
 
 ---
 
@@ -153,7 +154,7 @@ macOS dirá que esa wifi está «Sin conexión a internet». Es normal y no afec
 Conviene saber:
 - **Si el Mac cambia de wifi**, la caja lo detecta en unos segundos y vuelve a arrancar con la nueva dirección. En la terminal aparecerá el enlace nuevo. Los aparatos **no** tienen que volver a instalar nada: solo usar el enlace nuevo.
 - **Sin ninguna wifi**, la caja funciona solo en el propio Mac. Ábrela en él con `http://localhost:8080`.
-- **Para apagarla**, pulsa **Ctrl + C** en la Terminal.
+- **Para apagarla**, pulsa **Ctrl + C** en la Terminal. Las demás maneras están en el [apartado 11](#11-apagar-la-caja).
 
 ---
 
@@ -222,7 +223,7 @@ En cada móvil, tablet u ordenador, incluido el del profe si no es la propia caj
 | Dice **«Este aparato todavía no se fía de la caja»** aunque el certificado ya está descargado | Descargarlo no basta: hay que **instalarlo y marcarlo como de confianza** (apartado 5, paso 4). Después, cierra el navegador del todo y vuelve a abrirlo. En iPhone/iPad, no olvides «Ajustes de confianza de certificados». |
 | Funcionaba y ha dejado de funcionar | Es posible que el Mac haya cambiado de wifi y la dirección sea otra. Mira en la terminal de la caja el **último enlace** que ha salido. |
 | **«La IA está apagada»** o no prepara lecciones | Abre **Ollama** y comprueba que `ollama list` muestra `qwen3-vl:4b-instruct`. Si no aparece, descárgalo con `ollama pull qwen3-vl:4b-instruct`, para lo que hace falta internet. |
-| `caja.sh` dice que un **puerto está ocupado** (8080 u 8443) | Ya hay una caja encendida en otra Terminal: ciérrala con Ctrl + C, o cierra el programa que esté usando ese puerto. |
+| `caja.sh` dice que un **puerto está ocupado** (8080 u 8443) | Ya hay una caja encendida, quizá sin ninguna Terminal a la vista. Apágala como explica el [apartado 11](#11-apagar-la-caja) y vuelve a encenderla. |
 | `./caja.sh` dice **«permiso denegado»** | Ejecuta `chmod +x caja.sh` y vuelve a probar. |
 | La IA va **muy lenta** | Es normal en ordenadores con poca memoria. Cierra otros programas. Una lección tarda normalmente entre 1 y 2 minutos. |
 | Un alumno **no puede entrar sin conexión** | La primera vez que entra en un aparato necesita la caja. Después ya puede entrar sin ella. |
@@ -281,6 +282,88 @@ npm --prefix web run build
 **Más documentación:**
 - Cómo funciona por dentro el modo caja: comentarios de `caja.sh`, `caja-inicio.html` y `web/src/paqueteProfe.js`.
 - [Pitch de tres minutos](docs/pitch.md), [guion de la demo](docs/guion-demo.md), [preguntas del jurado](docs/preguntas-jurado.md), [ensayo en móvil](docs/ensayo.md) y [accesos de demo](docs/demo.md).
+
+---
+
+## 11. Apagar la caja
+
+Al apagar la caja **no se pierde nada**. Los datos quedan guardados en `api/mochila.db`. Las respuestas que los alumnos hagan mientras tanto esperan en sus aparatos y se envían solas cuando la caja vuelve a estar encendida.
+
+### Manera 1: con Ctrl + C (la normal)
+
+En la Terminal donde está encendida la caja, pulsa **Ctrl + C**. Se apaga todo: la app (puerto 8443) y la página de entrada (puerto 8080). Si la habías encendido con `caffeinate -i`, el Mac también vuelve a poder dormirse.
+
+### Manera 2: cerrar la ventana de la Terminal
+
+Cierra la ventana o la pestaña de la Terminal donde está la caja. Si macOS pregunta si quieres terminar el proceso, pulsa **«Terminar»**. Al cerrarse la Terminal, se apaga la caja.
+
+### Manera 3: desde otra Terminal
+
+Sirve cuando no encuentras la Terminal donde se encendió, o cuando la caja se encendió en segundo plano, sin ninguna ventana. Abre una Terminal nueva y escribe:
+
+```bash
+pkill -f caja.sh
+```
+
+Este comando apaga la caja entera: la app y la página de entrada.
+
+### Comprobar que está apagada
+
+```bash
+lsof -nP -iTCP:8443 -iTCP:8080 -sTCP:LISTEN
+```
+
+**Si no muestra nada, la caja está apagada.** Si muestra alguna línea, todavía queda algo encendido: sigue con la manera 4.
+
+### Manera 4: si algo se ha quedado encendido
+
+Si después de la manera 3 sigue saliendo algo, o `caja.sh` dice que un puerto está ocupado, apaga cada parte por separado.
+
+La app (puerto 8443):
+
+```bash
+pkill -f "uvicorn main:app --host 0.0.0.0 --port 8443"
+```
+
+La página de entrada (puerto 8080):
+
+```bash
+pkill -f "http.server 8080"
+```
+
+Y si aun así sigue ocupado algún puerto, se puede cerrar lo que lo esté usando. **Cuidado:** esto cierra cualquier programa que use ese puerto, sea o no de la caja.
+
+```bash
+lsof -ti tcp:8443 | xargs kill
+```
+
+```bash
+lsof -ti tcp:8080 | xargs kill
+```
+
+Después, vuelve a comprobarlo con `lsof`, como en el paso anterior.
+
+### Cerrar también la IA (Ollama)
+
+Ollama es un programa aparte y **sigue abierto** aunque apagues la caja. Para cerrarlo:
+- Haz clic en la **llama** de la barra de arriba y elige **«Salir de Ollama»**. O bien:
+  ```bash
+  osascript -e 'quit app "Ollama"'
+  ```
+- Si lo encendiste desde la Terminal con `ollama serve`, ciérralo con **Ctrl + C** en esa Terminal, o así:
+  ```bash
+  pkill -f "ollama serve"
+  ```
+
+### Volver a encenderla
+
+Abre Ollama y, dentro de la carpeta del proyecto, escribe:
+
+```bash
+caffeinate -i ./caja.sh
+```
+
+Lo explica el [apartado 4](#4-encender-la-caja-cada-día).
 
 ---
 
