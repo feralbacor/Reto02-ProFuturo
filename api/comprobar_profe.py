@@ -46,7 +46,7 @@ print("Cuentas de profe: todo bien")
 leccion = {"titulo": "Las plantas", "materia": "Ciencias", "lectura_facil": "a", "explicacion_ejemplo": "b",
            "preguntas": [{"pregunta": "p", "opciones": ["1", "2", "3", "4"], "correcta": 0, "porque": "x"}] * 5}
 llamadas = []
-main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1, n=None, dif=None: llamadas.append((texto, nivel, n, dif)) or {**leccion, "idioma": idioma, "nivel": nivel}
+main.crear_leccion_con_ia = lambda texto, idioma="es", nivel=1, n=None, dif=None, **_: llamadas.append((texto, nivel, n, dif)) or {**leccion, "idioma": idioma, "nivel": nivel}
 lid = "12345678-1234-1234-1234-123456789abc"
 cuerpo = {"texto": "Las plantas hacen la fotosíntesis con la luz del sol y el agua.", "materia": "Ciencias", "id": lid}
 assert api.post(f"/api/clases/{suya}/lecciones", json=cuerpo, headers=sesion).json()["id"] == lid

@@ -8,6 +8,7 @@ import PanelClase from './Panel.jsx'
 import { EstadisticasClase, EstadisticasAlumno, progresoAlumno } from './Estadisticas.jsx'
 import { t, plural, idioma, IDIOMAS, cambiarIdioma } from './idioma.js'
 import { buscar } from './tutorBuscar.js'
+import { SopaDeLetras, Crucigrama } from './Juegos.jsx'
 
 // shortcut: libera los 150 MB del ayudante que se probó y se quitó (rama tutor-offline); se puede borrar cuando ningún móvil lo tenga.
 try { globalThis.caches?.delete('transformers-cache'); localStorage.removeItem('ayudante') } catch { /* sin almacenamiento */ }
@@ -123,9 +124,15 @@ const guardarCambioProfe = (cambio) => {
 
 // Lo mismo que comprueba la API (leccion_valida), para avisar ya sin conexión.
 const textoLleno = (t) => typeof t === 'string' && t.trim() !== ''
-const leccionValida = (l) => ['titulo', 'lectura_facil', 'explicacion_ejemplo'].every(k => textoLleno(l[k]))
+const PALABRA = /^\p{L}{3,12}$/u // como PALABRA de la API: una sola palabra, solo letras
+const leccionValida = (l) => (l.tipo === 'examen'
+  ? textoLleno(l.titulo) && l.preguntas.length + (l.desarrollo?.length || 0) > 0 // el examen no lleva lectura ni ejemplo
+  : ['titulo', 'lectura_facil', 'explicacion_ejemplo'].every(k => textoLleno(l[k])))
   && new Set(l.preguntas.map(p => p.pregunta.trim().toLowerCase())).size === l.preguntas.length
   && l.preguntas.every(p => textoLleno(p.pregunta) && p.opciones.every(textoLleno) && new Set(p.opciones.map(o => o.trim().toLowerCase())).size === 4)
+  && (l.desarrollo || []).every(d => textoLleno(d.pregunta))
+  && (l.palabras || []).every(p => PALABRA.test(p.palabra.trim()) && textoLleno(p.pista))
+  && (!l.juegos?.length || (l.palabras || []).length >= 3)
 
 function useEnAparato(leerLista) {
   const [lista, setLista] = useState(leerLista)
@@ -164,7 +171,7 @@ async function prepararLeccion(item, alAvanzar) {
     item = { ...item, texto: (item.texto.trim() ? item.texto.trim() + '\n\n' : '') + r.texto, fotos: item.fotos.slice(1) }
     alAvanzar(item)
   }
-  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id } })
+  return api(`/api/clases/${encodeURIComponent(item.codigo)}/lecciones`, { method: 'POST', body: { texto: item.texto, materia: item.materia, titulo: item.titulo || '', idioma: item.idioma || 'es', nivel: item.nivel ?? 1, preguntas: item.preguntas, dificultad_preguntas: item.dificultad_preguntas, id: item.id, tipo: item.tipo || 'leccion', desarrollo: item.desarrollo || 0, juegos: item.juegos || [] } })
 }
 
 // La IA tarda minutos y Cloudflare corta la espera a los 100 s, aunque la API siga trabajando: se le va preguntando.
@@ -697,6 +704,12 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
     }
   }
 
+  // La nota del profe a una respuesta escrita vale más que la de Mochila. El error lo enseña el formulario.
+  const notaDesarrollo = async (d, nota, comentario) => {
+    await api(`/api/clases/${encodeURIComponent(codigo)}/desarrollos/${d.id}`, { method: 'PUT', body: { nota, comentario } })
+    cargar()
+  }
+
   const pendientes = usePendientesProfe().filter(p => p.codigo === codigo)
   // Los cambios sin enviar se ven ya, encima de lo que dice el ordenador de la clase.
   const cambios = useCambiosProfe()
@@ -789,7 +802,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
           <div className="lista">
             {pendientes.map(p => (
               <div key={p.id} className="tarjeta">
-                <p className="fila-titulo" style={{ margin: 0 }}>{p.titulo ? `${p.titulo} · ` : ''}{t(p.materia || 'General')} · {p.fotos.length ? plural(p.fotos.length, '{n} foto o archivo', '{n} fotos o archivos') : t('texto')}</p>
+                <p className="fila-titulo" style={{ margin: 0 }}>{p.tipo === 'examen' ? `${t('Examen')} · ` : ''}{p.titulo ? `${p.titulo} · ` : ''}{t(p.materia || 'General')} · {p.fotos.length ? plural(p.fotos.length, '{n} foto o archivo', '{n} fotos o archivos') : t('texto')}</p>
                 <p className="nota" style={{ margin: '4px 0 0' }}>{p.texto.trim().slice(0, 80) || t('Sin texto todavía')}</p>
                 {p.error && <Aviso texto={t('No se ha podido preparar: {error}', { error: t(p.error) })} />}
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: -12 }}>
@@ -813,6 +826,7 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
                 <div key={l.id} className="fila-con-menu">
                   <button onClick={() => abrirLeccion(l)} className="fila">
                     <span className="fila-texto"><span className="fila-titulo">{l.titulo}</span></span>
+                    {l.contenido?.tipo === 'examen' && <span className="insignia insignia-amarilla">{t('Examen')}</span>}
                     {l.cambio && <span className="insignia">{l.cambio.error ? t('Error al guardar') : t('Sin enviar')}</span>}
                     <span className={`insignia ${l.publicada ? 'insignia-verde' : ''}`}>{l.publicada ? t('Publicada') : t('Borrador')}</span>
                     <Icono nombre="seguir" className="icono-final" />
@@ -848,9 +862,80 @@ function ProfeClase({ codigo, aviso, onVolver, onNueva, onNotas, onAlumno, onEdi
         </section>
       )}
 
+      {clase.desarrollos?.length > 0 && (
+        <section className="seccion">
+          <h2 className="seccion-titulo">{t('Respuestas escritas')}</h2>
+          <p className="frase" style={{ marginTop: -4, marginBottom: 14 }}>{t('Las corrige Mochila. Revísalas: si pones otra nota, vale la tuya y le llega al alumno.')}</p>
+          {clase.desarrollos.map(d => <RespuestaEscrita key={d.id} d={d} onGuardar={notaDesarrollo} />)}
+        </section>
+      )}
+
       <section className="seccion">
         <ListaAlumnos codigo={codigo} alumnos={clase.alumnos} progreso={progreso} onVer={onAlumno} onNuevaContrasena={nuevaContrasena} onEliminar={eliminarAlumno} />
       </section>
+    </div>
+  )
+}
+
+// Una respuesta de desarrollo de un alumno: lo que escribió, la nota de Mochila y la del profe, que es la que vale.
+function RespuestaEscrita({ d, onGuardar }) {
+  const [abierta, setAbierta] = useState(false)
+  const [nota, setNota] = useState(String(d.nota_profe ?? (d.nota_ia >= 0 ? d.nota_ia : '')))
+  const [comentario, setComentario] = useState(d.comentario_profe ?? d.comentario_ia ?? '')
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const revisada = d.nota_profe !== null && d.nota_profe !== undefined
+
+  const guardarNota = async (ev) => {
+    ev.preventDefault()
+    setError('')
+    setGuardando(true)
+    try {
+      await onGuardar(d, Number(nota), comentario)
+      setAbierta(false)
+    } catch (e) {
+      setError(e.message === SIN_CONEXION ? t('Para guardar la nota hace falta conexión con el ordenador de la clase.') : t(e.message))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="tarjeta duda">
+      <p className="nota" style={{ marginTop: 0, marginBottom: 6 }}>{d.alumno} · {d.leccion} · {cuando(d.fecha)}</p>
+      <p className="duda-pregunta">{d.pregunta}</p>
+      <p className="escrito">{d.texto}</p>
+      {revisada
+        ? <p className="duda-respuesta"><strong>{t('Tu nota: {n} de 10', { n: d.nota_profe })}</strong>{d.comentario_profe ? ` · ${d.comentario_profe}` : ''}</p>
+        : d.nota_ia === null || d.nota_ia === undefined ? <p className="nota">{t('Mochila todavía no la ha corregido.')}</p>
+          : d.nota_ia < 0 ? <p className="aviso aviso-atencion">{t('Mochila no ha podido corregirla: ponle tú la nota.')}</p>
+            : <p className="duda-respuesta"><strong>{t('Nota de Mochila: {n} de 10', { n: d.nota_ia })}</strong>{d.comentario_ia ? ` · ${d.comentario_ia}` : ''}</p>}
+      {revisada && d.nota_ia >= 0 && <p className="nota">{t('Mochila le había puesto un {n}.', { n: d.nota_ia })}</p>}
+      {abierta
+        ? (
+          <form onSubmit={guardarNota} className="formulario" style={{ marginTop: 14 }}>
+            <div className="campo-grupo">
+              <label htmlFor={`nota-${d.id}`} className="etiqueta">{t('Nota (de 0 a 10)')}</label>
+              <input id={`nota-${d.id}`} className="campo" inputMode="numeric" value={nota} autoFocus style={{ maxWidth: 120 }}
+                onChange={e => setNota(e.target.value.replace(/\D/g, '').slice(0, 2))} />
+            </div>
+            <div className="campo-grupo">
+              <label htmlFor={`comentario-${d.id}`} className="etiqueta">{t('Comentario para el alumno')}</label>
+              <textarea id={`comentario-${d.id}`} className="campo" rows={2} maxLength={600} value={comentario} onChange={e => setComentario(e.target.value)} />
+            </div>
+            <Aviso texto={error} />
+            <div className="botones-fila">
+              <button type="button" onClick={() => setAbierta(false)} className="boton boton-fantasma">{t('Cancelar')}</button>
+              <button type="submit" disabled={!/^(10|\d)$/.test(nota) || guardando} className="boton boton-principal">{guardando ? t('Guardando…') : t('Guardar la nota')}</button>
+            </div>
+          </form>
+        )
+        : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+            {revisada && <span className="insignia insignia-verde">{t('Revisada por ti')}</span>}
+            <button onClick={() => setAbierta(true)} className="boton boton-fantasma boton-pequeno" style={{ marginLeft: -12 }}>{revisada ? t('Cambiar la nota') : t('Revisar la nota')}</button>
+          </div>
+        )}
     </div>
   )
 }
@@ -874,6 +959,35 @@ const DIFICULTADES = [
   { nombre: 'Difíciles', pista: 'Aplicar lo aprendido a un caso concreto o comparar conceptos.' },
   { nombre: 'Muy difíciles', pista: 'Razonar en varios pasos, con casos nuevos y excepciones. Las opciones malas son casi correctas.' },
 ]
+
+// Las pruebas que puede llevar una lección: [nombre, para qué sirve]. Los juegos usan las palabras clave de la lección.
+const PRUEBAS = {
+  cuestionario: ['Cuestionario', 'Preguntas con 4 respuestas. Cuentan para la nota.'],
+  sopa: ['Sopa de letras', 'Con las palabras clave del tema. Para practicar: no cuenta para la nota.'],
+  crucigrama: ['Crucigrama', 'Con las palabras clave y una pista de cada una. Para practicar: no cuenta para la nota.'],
+  desarrollo: ['Pregunta de desarrollo', 'Se contesta escribiendo. La corrige Mochila y tú puedes cambiar la nota.'],
+}
+const PRUEBAS_JUEGO = ['sopa', 'crucigrama']
+
+// Un botón de marcado grande, con su explicación debajo.
+function Marcar({ marcada, onCambio, titulo, detalle, disabled }) {
+  return (
+    <label className="tarjeta marcar">
+      <input type="checkbox" checked={marcada} onChange={onCambio} disabled={disabled} />
+      <span><span className="marcar-titulo">{titulo}</span>{detalle && <span className="marcar-detalle">{detalle}</span>}</span>
+    </label>
+  )
+}
+
+// La ✕ arriba a la derecha de una tarjeta (dentro de una con position: relative).
+function BotonQuitar({ onClick, etiqueta }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={etiqueta}
+      style={{ position: 'absolute', top: 2, insetInlineEnd: 6, width: 40, height: 40, display: 'grid', placeItems: 'center', background: 'none', border: 0, color: 'var(--tinta-suave)', cursor: 'pointer' }}>
+      <Icono nombre="mal" tam={18} />
+    </button>
+  )
+}
 
 // Barra para elegir un valor de una lista (nivel, preguntas…), con los valores debajo para tocarlos.
 function Barra({ id, valores, valor, onCambio, disabled, nombre, extremos }) {
@@ -906,8 +1020,18 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
   const [ia, setIa] = useState(null)
   const [lenguaLeccion, setLenguaLeccion] = useState(inicial?.idioma || idioma())
   const [nivel, setNivel] = useState(inicial?.nivel ?? 2)
-  const [cuantas, setCuantas] = useState(inicial?.preguntas ?? 5)
+  const [cuantas, setCuantas] = useState(inicial?.preguntas || 5)
   const [dificultad, setDificultad] = useState(inicial?.dificultad_preguntas ?? 2)
+  const [tipo, setTipo] = useState(inicial?.tipo || 'leccion') // lección o examen
+  // Las pruebas marcadas. Sin ninguna, la lección es solo para leer. (Las «por preparar» de antes no tienen la lista.)
+  const [pruebas, setPruebas] = useState(() => inicial?.pruebas || (!inicial || inicial.preguntas ? ['cuestionario'] : []))
+  const [cuantasDesarrollo, setCuantasDesarrollo] = useState(inicial?.desarrollo || 2)
+  const examen = tipo === 'examen'
+  const marcada = (p) => pruebas.includes(p) && (!examen || !PRUEBAS_JUEGO.includes(p)) // el examen no lleva juegos
+  const marcar = (p) => setPruebas(ps => ps.includes(p) ? ps.filter(x => x !== p) : [...ps, p])
+  const conTest = marcada('cuestionario')
+  const conDesarrollo = marcada('desarrollo')
+  const sinPreguntas = examen && !conTest && !conDesarrollo
 
   useEffect(() => {
     api('/api/salud').then(s => setIa(s.ia)).catch(() => {})
@@ -963,9 +1087,15 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
 
   const crear = async () => {
     setError('')
-    setOcupado(t(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.' : 'Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.'))
+    setOcupado(examen
+      ? t(fotos.length ? 'Leyendo las fotos y los archivos y preparando el examen… Puede tardar unos minutos. Ten paciencia.' : 'Preparando el examen… Puede tardar unos minutos. Ten paciencia.')
+      : t(fotos.length ? 'Leyendo las fotos y los archivos y preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.' : 'Preparando la lección… Puede tardar entre 1 y 10 minutos, según el nivel y las preguntas elegidas. Ten paciencia.'))
     // shortcut: si justo se está enviando la versión anterior en segundo plano, gana esa (mismo id); se corrige al revisarla.
-    let item = { id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, preguntas: cuantas, dificultad_preguntas: dificultad, fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString() }
+    let item = {
+      id: inicial?.id || nuevoId(), codigo, texto, materia, titulo, idioma: lenguaLeccion, nivel, dificultad_preguntas: dificultad,
+      tipo, pruebas, preguntas: conTest ? cuantas : 0, desarrollo: conDesarrollo ? cuantasDesarrollo : 0, juegos: PRUEBAS_JUEGO.filter(marcada),
+      fotos: fotos.map(f => f.datos), nombres: fotos.map(f => f.nombre), fecha: new Date().toISOString(),
+    }
     try {
       const r = await prepararLeccion(item, (i) => { item = i }).catch((e) => {
         // 409: ya se estaba preparando (se pulsó otra vez o «Preparar ahora»). Pasajero: puede que solo se haya cortado la espera.
@@ -1000,31 +1130,47 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
     id: inicial?.id || nuevoId(),
     nueva: true,
     publicada: 0,
-    leccion: { titulo, materia, idioma: lenguaLeccion, lectura_facil: texto, explicacion_ejemplo: '', preguntas: [] },
+    // En el examen, el temario no se guarda: el alumno no lo ve.
+    leccion: { tipo, titulo, materia, idioma: lenguaLeccion, lectura_facil: examen ? '' : texto, explicacion_ejemplo: '', preguntas: [], desarrollo: [], juegos: PRUEBAS_JUEGO.filter(marcada), palabras: [] },
   })
 
   const suficiente = texto.trim().length >= 40 || fotos.length > 0
   const espera = ocupado && <Cargando texto={ocupado} />
+  let numero = 0
+  const N = () => ++numero // los pasos se numeran solos: el examen no tiene «El nivel»
 
   return (
     <div className="pagina">
       <header className="cabecera"><Volver onClick={onVolver} disabled={!!ocupado}>{t('La clase')}</Volver></header>
       <p className="subtitulo" style={{ margin: '0 0 4px' }}>{t(materia || 'General')}</p>
-      <h1 className="titulo">{inicial ? t('Lección por preparar') : t('Nueva lección')}</h1>
-      <p className="frase">{t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura, un ejemplo y las preguntas. Tú la revisas antes de publicarla.')}</p>
+      <h1 className="titulo">{inicial ? (examen ? t('Examen por preparar') : t('Lección por preparar')) : examen ? t('Nuevo examen') : t('Nueva lección')}</h1>
+      <p className="frase">{examen
+        ? t('Sube el temario: fotos del libro, un archivo o el texto. Mochila prepara las preguntas. Tus alumnos no ven el temario: solo el examen.')
+        : t('Haz una foto a una página del libro. Mochila la lee y prepara una lectura, un ejemplo y las preguntas. Tú la revisas antes de publicarla.')}</p>
       {ia === 'apagada' && (
         <p className="aviso aviso-atencion"><strong>{t('La lectura de fotos está apagada')}</strong>{t('Enciende Ollama en el ordenador de la clase. Mientras, puedes subir un archivo (PDF, Word…) o escribir el texto.')}</p>
       )}
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">1</span><label htmlFor="titulo-leccion">{t('El título')}</label></h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span>{t('¿Qué vas a crear?')}</h2>
+        <div className="botones-fila">
+          {[['leccion', t('Lección')], ['examen', t('Examen')]].map(([valor, nombre]) => (
+            <button key={valor} onClick={() => setTipo(valor)} aria-pressed={tipo === valor} disabled={!!ocupado}
+              className={`boton boton-grande ${tipo === valor ? 'boton-principal' : 'boton-secundario'}`}>{nombre}</button>
+          ))}
+        </div>
+        <p className="pista">{examen ? t('Solo preguntas, sin lectura. Tus alumnos lo hacen una sola vez.') : t('Una lectura, un ejemplo y las pruebas que tú elijas.')}</p>
+      </section>
+
+      <section className="seccion">
+        <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span><label htmlFor="titulo-leccion">{t('El título')}</label></h2>
         <input id="titulo-leccion" className="campo" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120}
           placeholder={t('Por ejemplo: Las ecuaciones')} disabled={!!ocupado} />
         <p className="pista">{t('Si lo dejas vacío, Mochila le pone uno.')}</p>
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">2</span>{t('Contenido')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span>{examen ? t('El temario') : t('Contenido')}</h2>
         <div className="botones-fila">
           <button onClick={() => camara.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="camara" />{t('Hacer una foto')}</button>
           <button onClick={() => galeria.current.click()} disabled={!!ocupado || fotos.length >= MAX_FOTOS} className="boton boton-secundario"><Icono nombre="fotos" />{t('Elegir fotos')}</button>
@@ -1064,34 +1210,54 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
         {!suficiente && texto.trim() && <p className="pista">{t('Hace falta un poco más de texto: al menos un par de frases.')}</p>}
       </section>
 
-      <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">3</span><label htmlFor="nivel-leccion">{t('El nivel')}</label></h2>
-        <Barra id="nivel-leccion" valores={[0, 1, 2, 3, 4, 5]} valor={nivel} onCambio={setNivel} disabled={!!ocupado}
-          nombre={i => t(NIVELES[i].nombre)} extremos={[t('Más corto y sencillo'), t('Más extenso y técnico')]} />
-        <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
-      </section>
+      {!examen && (
+        <section className="seccion">
+          <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span><label htmlFor="nivel-leccion">{t('El nivel')}</label></h2>
+          <Barra id="nivel-leccion" valores={[0, 1, 2, 3, 4, 5]} valor={nivel} onCambio={setNivel} disabled={!!ocupado}
+            nombre={i => t(NIVELES[i].nombre)} extremos={[t('Más corto y sencillo'), t('Más extenso y técnico')]} />
+          <p className="pista"><strong>{nivel} · {t(NIVELES[nivel].nombre)}.</strong> {t(NIVELES[nivel].pista)} {t('Va según el tema: un 4 de primaria es más fácil que un 2 de la universidad.')}</p>
+        </section>
+      )}
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">4</span>{t('Las preguntas')}</h2>
-        <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17 }}>{t('Cantidad')}</label>
-        <Barra id="cuantas-preguntas" valores={[0, 5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
-          nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('Sin preguntas'), t('30 preguntas')]} />
-        {cuantas > 0 && (
+        <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span>{examen ? t('Las preguntas del examen') : t('Las pruebas')}</h2>
+        <p className="pista" style={{ marginTop: 0, marginBottom: 12 }}>{examen
+          ? t('Marca uno de los dos tipos de pregunta, o los dos.')
+          : t('Marca las que quieras. Si no marcas ninguna, será una lección solo para leer.')}</p>
+        {(examen ? ['cuestionario', 'desarrollo'] : Object.keys(PRUEBAS)).map(p => (
+          <Marcar key={p} marcada={marcada(p)} onCambio={() => marcar(p)} disabled={!!ocupado} titulo={t(PRUEBAS[p][0])} detalle={t(PRUEBAS[p][1])} />
+        ))}
+        {conTest && (
           <>
-            <label htmlFor="dificultad-preguntas" className="etiqueta" style={{ fontSize: 17, marginTop: 18 }}>{t('Dificultad')}</label>
+            <label htmlFor="cuantas-preguntas" className="etiqueta" style={{ fontSize: 17, marginTop: 20 }}>{t('Preguntas del cuestionario')}</label>
+            <Barra id="cuantas-preguntas" valores={[5, 10, 15, 20, 25, 30]} valor={cuantas} onCambio={setCuantas} disabled={!!ocupado}
+              nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('5 preguntas'), t('30 preguntas')]} />
+          </>
+        )}
+        {conDesarrollo && (
+          <>
+            <label htmlFor="cuantas-desarrollo" className="etiqueta" style={{ fontSize: 17, marginTop: 20 }}>{t('Preguntas de desarrollo')}</label>
+            <Barra id="cuantas-desarrollo" valores={[1, 2, 3, 4, 5]} valor={cuantasDesarrollo} onCambio={setCuantasDesarrollo} disabled={!!ocupado}
+              nombre={i => plural(i, '{n} pregunta', '{n} preguntas')} extremos={[t('1 pregunta'), t('5 preguntas')]} />
+          </>
+        )}
+        {(conTest || conDesarrollo) && (
+          <>
+            <label htmlFor="dificultad-preguntas" className="etiqueta" style={{ fontSize: 17, marginTop: 20 }}>{t('Dificultad')}</label>
             <Barra id="dificultad-preguntas" valores={[0, 1, 2, 3, 4, 5]} valor={dificultad} onCambio={setDificultad} disabled={!!ocupado}
               nombre={i => t(DIFICULTADES[i].nombre)} extremos={[t('Muy fáciles'), t('Muy difíciles')]} />
           </>
         )}
         <p className="pista">
-          {cuantas === 0 ? t('La lección no llevará test: solo la lectura y el ejemplo.')
-            : <><strong>{plural(cuantas, '{n} pregunta', '{n} preguntas')} · {t(DIFICULTADES[dificultad].nombre)}.</strong> {t(DIFICULTADES[dificultad].pista)}</>}
-          {cuantas >= 20 && ` ${t('Con muchas preguntas tarda más.')}`}
+          {sinPreguntas ? t('Marca al menos un tipo de pregunta.')
+            : !examen && !Object.keys(PRUEBAS).some(marcada) ? t('Lección solo para leer: la lectura y el ejemplo, sin pruebas.')
+              : (conTest || conDesarrollo) && <><strong>{t(DIFICULTADES[dificultad].nombre)}.</strong> {t(DIFICULTADES[dificultad].pista)}</>}
+          {conTest && cuantas >= 20 && ` ${t('Con muchas preguntas tarda más.')}`}
         </p>
       </section>
 
       <section className="seccion">
-        <h2 className="paso-profe"><span className="paso-profe-num">5</span>{t('El idioma de la lección')}</h2>
+        <h2 className="paso-profe"><span className="paso-profe-num">{N()}</span>{examen ? t('El idioma del examen') : t('El idioma de la lección')}</h2>
         <select className="campo" value={lenguaLeccion} onChange={e => setLenguaLeccion(e.target.value)} disabled={!!ocupado} aria-label={t('El idioma de la lección')}>
           {IDIOMAS.map(i => <option key={i.codigo} value={i.codigo}>{i.bandera} {i.nombre}</option>)}
         </select>
@@ -1101,8 +1267,8 @@ function ProfeNuevaLeccion({ codigo, materia, inicial, onVolver, onCreada }) {
       <Aviso texto={error} />
       <div className="acciones-pie" style={{ marginTop: 28 }}>
         {!leyendo && espera}
-        <button onClick={crear} disabled={!suficiente || !!ocupado} className="boton boton-principal boton-ancho boton-grande">{t('Preparar la lección')}</button>
-        <button onClick={escribirAMano} disabled={fotos.length > 0 || !!ocupado} className="boton boton-secundario boton-ancho" style={{ marginTop: 12 }}>{t('Escribirla yo, sin IA')}</button>
+        <button onClick={crear} disabled={!suficiente || !!ocupado || sinPreguntas} className="boton boton-principal boton-ancho boton-grande">{examen ? t('Preparar el examen') : t('Preparar la lección')}</button>
+        <button onClick={escribirAMano} disabled={fotos.length > 0 || !!ocupado} className="boton boton-secundario boton-ancho" style={{ marginTop: 12 }}>{examen ? t('Escribirlo yo, sin IA') : t('Escribirla yo, sin IA')}</button>
         <p className="pista">{fotos.length > 0
           ? t('Las fotos y los archivos necesitan conexión. Quítalos para escribir tú la lección.')
           : t('Prepararla necesita conexión con la IA. Escribirla tú funciona también sin conexión.')}</p>
@@ -1127,11 +1293,16 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     ...l, preguntas: l.preguntas.map((p, j) => j === i ? { ...p, opciones: p.opciones.map((o, m) => m === k ? valor : o) } : p),
   }))
 
-  const quitarPregunta = (i) => {
+  const quitarPregunta = (i, clave = 'preguntas') => {
     // Las respuestas guardan la posición de la pregunta: la API tampoco deja quitarla si ya hay respuestas.
     if (inicial.respondida) return window.alert(t('No se puede borrar esta pregunta: tus alumnos ya han contestado esta lección. Puedes cambiar su texto.'))
-    if (window.confirm(t('¿Borrar la pregunta {n}? Se quitará al guardar la lección.', { n: i + 1 }))) cambiar('preguntas', leccion.preguntas.filter((_, j) => j !== i))
+    if (window.confirm(t('¿Borrar la pregunta {n}? Se quitará al guardar la lección.', { n: i + 1 }))) cambiar(clave, leccion[clave].filter((_, j) => j !== i))
   }
+  const esExamen = leccion.tipo === 'examen'
+  const desarrollo = leccion.desarrollo || []
+  const palabras = leccion.palabras || []
+  const juegos = leccion.juegos || []
+  const cambiarEn = (clave, i, cambios) => setLeccion(l => ({ ...l, [clave]: l[clave].map((x, j) => j === i ? { ...x, ...cambios } : x) }))
 
   // Si venía de «Por preparar», ya está guardada como lección escrita a mano.
   const quitarDePorPreparar = () => {
@@ -1157,7 +1328,7 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
     } catch (e) {
       // Sin conexión: el cambio se queda en el aparato y se envía solo al volver la conexión.
       if (!esPasajero(e)) return setAviso({ texto: e.message, color: COLOR.rojo })
-      if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, o hay dos opciones o dos preguntas iguales. Revísalo.', color: COLOR.rojo })
+      if (!leccionValida(leccion)) return setAviso({ texto: 'Falta algún texto, hay dos opciones o dos preguntas iguales, o una palabra de los juegos no vale. Revísalo.', color: COLOR.rojo })
       if (!guardarCambioProfe({ id: inicial.id, codigo, leccion, publicar, nueva: inicial.nueva })) return setAviso({ texto: 'No cabe en este aparato.', color: COLOR.rojo })
       quitarDePorPreparar()
       onVolver(t('Sin conexión: guardado en este aparato. Se enviará solo cuando vuelva la conexión.'))
@@ -1176,10 +1347,12 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
         <Volver onClick={salir}>{t('La clase')}</Volver>
         {publicada && <span className="insignia insignia-verde">{t('Publicada')}</span>}
       </header>
-      <h1 className="titulo">{publicada ? t('Lección publicada') : inicial.nueva ? t('Escribe la lección') : t('Revisa la lección')}</h1>
+      <h1 className="titulo">{esExamen
+        ? (publicada ? t('Examen publicado') : inicial.nueva ? t('Escribe el examen') : t('Revisa el examen'))
+        : (publicada ? t('Lección publicada') : inicial.nueva ? t('Escribe la lección') : t('Revisa la lección'))}</h1>
       <p className="frase">{publicada
         ? t('Si cambias algo, tus alumnos lo verán la próxima vez que se conecten.')
-        : inicial.nueva ? t('Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.')
+        : inicial.nueva ? (esExamen ? t('Añade las preguntas del examen: de test, de desarrollo o de los dos tipos. Funciona también sin conexión.') : t('Escribe la lectura y el ejemplo, y añade las preguntas que quieras. Funciona también sin conexión.'))
           : t('Léela y corrige lo que haga falta. Tus alumnos solo ven las lecciones publicadas.')}</p>
 
       <div className="formulario" style={{ marginTop: 28 }}>
@@ -1191,21 +1364,25 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
           <label htmlFor="r-materia" className="etiqueta">{t('Materia')}</label>
           <input id="r-materia" className="campo" value={leccion.materia || ''} onChange={e => cambiar('materia', e.target.value)} maxLength={40} placeholder={t('General')} />
         </div>
-        <div className="campo-grupo">
-          <label htmlFor="r-lectura" className="etiqueta">{t('Lectura fácil')}</label>
-          {area('r-lectura', 'lectura_facil', 8)}
-        </div>
-        <div className="campo-grupo">
-          <label htmlFor="r-ejemplo" className="etiqueta">{t('Un ejemplo')}</label>
-          {area('r-ejemplo', 'explicacion_ejemplo', 5)}
-        </div>
+        {!esExamen && (
+          <>
+            <div className="campo-grupo">
+              <label htmlFor="r-lectura" className="etiqueta">{t('Lectura fácil')}</label>
+              {area('r-lectura', 'lectura_facil', 8)}
+            </div>
+            <div className="campo-grupo">
+              <label htmlFor="r-ejemplo" className="etiqueta">{t('Un ejemplo')}</label>
+              {area('r-ejemplo', 'explicacion_ejemplo', 5)}
+            </div>
+          </>
+        )}
       </div>
 
       <section className="seccion">
-        <h2 className="seccion-titulo">{t('Las preguntas')}</h2>
+        <h2 className="seccion-titulo">{t('Cuestionario')}</h2>
         <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{leccion.preguntas.length
           ? t('Comprueba que la respuesta marcada en verde es la buena. Si no, marca el círculo de la buena.')
-          : t('Esta lección no lleva preguntas: los alumnos solo leen y ven el ejemplo.')}</p>
+          : esExamen ? t('Este examen no lleva preguntas de test.') : t('Esta lección no lleva cuestionario.')}</p>
         {leccion.preguntas.map((p, i) => (
           <fieldset key={i} className="tarjeta" style={{ marginBottom: 16, position: 'relative' }}>
             <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta {n}', { n: i + 1 })}</legend>
@@ -1230,6 +1407,55 @@ function ProfeRevisar({ codigo, inicial, onVolver }) {
         {leccion.preguntas.length < 30 && (
           <button onClick={() => cambiar('preguntas', [...leccion.preguntas, { pregunta: '', opciones: ['', '', '', ''], correcta: 0, porque: '' }])}
             className="boton boton-secundario boton-ancho">{t('+ Añadir una pregunta')}</button>
+        )}
+      </section>
+
+      {!esExamen && (
+        <section className="seccion">
+          <h2 className="seccion-titulo">{t('Sopa de letras y crucigrama')}</h2>
+          {PRUEBAS_JUEGO.map(j => (
+            <Marcar key={j} marcada={juegos.includes(j)} titulo={t(PRUEBAS[j][0])}
+              onCambio={() => cambiar('juegos', juegos.includes(j) ? juegos.filter(x => x !== j) : [...juegos, j])} />
+          ))}
+          {(juegos.length > 0 || palabras.length > 0) && (
+            <>
+              <p className="frase" style={{ marginTop: 16, marginBottom: 12 }}>{t('Las palabras clave: una sola palabra de 3 a 12 letras, con una pista que la explique sin decirla. Hacen falta al menos 3.')}</p>
+              {palabras.map((p, i) => (
+                <div key={i} className="tarjeta" style={{ marginBottom: 12, position: 'relative' }}>
+                  <BotonQuitar onClick={() => cambiar('palabras', palabras.filter((_, j) => j !== i))} etiqueta={t('Borrar la palabra {n}', { n: i + 1 })} />
+                  <input className="campo" value={p.palabra} maxLength={12} onChange={e => cambiarEn('palabras', i, { palabra: e.target.value })}
+                    aria-label={t('Palabra {n}', { n: i + 1 })} placeholder={t('La palabra')} style={{ fontWeight: 650, marginBottom: 8, width: 'calc(100% - 44px)' }} />
+                  <input className="campo" value={p.pista} onChange={e => cambiarEn('palabras', i, { pista: e.target.value })}
+                    aria-label={t('Pista de la palabra {n}', { n: i + 1 })} placeholder={t('La pista')} style={{ fontSize: 18 }} />
+                  {p.palabra.trim() && !PALABRA.test(p.palabra.trim()) && <p className="pista" style={{ color: 'var(--rojo)' }}>{t('Una sola palabra, de 3 a 12 letras, sin espacios ni números.')}</p>}
+                </div>
+              ))}
+              {palabras.length < 15 && (
+                <button onClick={() => cambiar('palabras', [...palabras, { palabra: '', pista: '' }])} className="boton boton-secundario boton-ancho">{t('+ Añadir una palabra')}</button>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      <section className="seccion">
+        <h2 className="seccion-titulo">{t('Preguntas de desarrollo')}</h2>
+        <p className="frase" style={{ marginTop: -4, marginBottom: 16 }}>{desarrollo.length
+          ? t('Se contestan escribiendo. Escribe lo que contestaría un buen alumno: Mochila lo usa para corregir, y tú podrás cambiar la nota.')
+          : t('No lleva preguntas de desarrollo. Si quieres, añade alguna: se contestan escribiendo.')}</p>
+        {desarrollo.map((d, i) => (
+          <fieldset key={i} className="tarjeta" style={{ marginBottom: 16, position: 'relative' }}>
+            <legend className="etiqueta" style={{ padding: '0 6px', marginBottom: 0 }}>{t('Pregunta de desarrollo {n}', { n: i + 1 })}</legend>
+            <BotonQuitar onClick={() => quitarPregunta(i, 'desarrollo')} etiqueta={t('Borrar la pregunta de desarrollo {n}', { n: i + 1 })} />
+            <textarea className="campo" rows={2} value={d.pregunta} onChange={e => cambiarEn('desarrollo', i, { pregunta: e.target.value })}
+              aria-label={t('Pregunta de desarrollo {n}', { n: i + 1 })} style={{ marginTop: 24, fontWeight: 650 }} />
+            <label htmlFor={`modelo-${i}`} className="etiqueta" style={{ marginTop: 14, fontSize: 16 }}>{t('La respuesta buena (para corregir)')}</label>
+            <textarea id={`modelo-${i}`} className="campo" rows={3} value={d.respuesta_modelo || ''} onChange={e => cambiarEn('desarrollo', i, { respuesta_modelo: e.target.value })} style={{ fontSize: 18 }} />
+          </fieldset>
+        ))}
+        {desarrollo.length < 10 && (
+          <button onClick={() => cambiar('desarrollo', [...desarrollo, { pregunta: '', respuesta_modelo: '' }])}
+            className="boton boton-secundario boton-ancho">{t('+ Añadir una pregunta de desarrollo')}</button>
         )}
       </section>
 
@@ -1551,6 +1777,10 @@ function AlumnoCasa({ alumno, onSalir }) {
   const [dudas, setDudas] = useState(() => leer(clave('dudas'), [])) // las que ya tiene el servidor, con su respuesta si la hay
   const [dudasCola, setDudasCola] = useState(() => leer('dudas-pendientes', [])) // las escritas aquí que aún no han llegado
   const [dudasQuitadas, setDudasQuitadas] = useState(() => leer(clave('dudas-quitadas'), [])) // las que el estudiante ya no quiere ver
+  // Respuestas de desarrollo: las que ya tiene el servidor (con su nota si la hay) y las escritas aquí que aún no han llegado.
+  // shortcut: con la app cerrada no se envían (segundo-plano.js solo lleva respuestas y dudas); salen al volver a abrirla.
+  const [escritas, setEscritas] = useState(() => leer(clave('desarrollos'), []))
+  const [escritasCola, setEscritasCola] = useState(() => leer('desarrollos-pendientes', []))
   const appGuardada = useAppGuardada()
   const enCurso = useRef(false)
 
@@ -1590,7 +1820,7 @@ function AlumnoCasa({ alumno, onSalir }) {
       const r = await api('/api/sync', {
         method: 'POST',
         body: {
-          alumno_id: alumno.id, respuestas: enviadas, dudas: leer('dudas-pendientes', []),
+          alumno_id: alumno.id, respuestas: enviadas, dudas: leer('dudas-pendientes', []), desarrollos: leer('desarrollos-pendientes', []),
           version: leer(`clases:${alumno.id}`, null) ? leer(`version:${alumno.id}`, null) : null,
         },
       })
@@ -1609,6 +1839,14 @@ function AlumnoCasa({ alumno, onSalir }) {
       setDudasCola(dudasQuedan)
       guardar(`dudas:${alumno.id}`, r.dudas)
       setDudas(r.dudas)
+      if (r.desarrollos) { // un servidor de antes no los conoce: se quedan en la cola
+        const escritasRecibidas = new Set(r.desarrollos_recibidos)
+        const escritasQuedan = leer('desarrollos-pendientes', []).filter(d => !escritasRecibidas.has(d.id))
+        guardar('desarrollos-pendientes', escritasQuedan)
+        setEscritasCola(escritasQuedan)
+        guardar(`desarrollos:${alumno.id}`, r.desarrollos)
+        setEscritas(r.desarrollos)
+      }
       guardar(`version:${alumno.id}`, r.version)
       const ahora = new Date().toISOString()
       guardar(`actualizado:${alumno.id}`, ahora)
@@ -1679,19 +1917,33 @@ function AlumnoCasa({ alumno, onSalir }) {
       .filter(d => !dudasQuitadas.includes(d.id))
   }
 
+  const escribir = (leccionId, pregunta, texto) => {
+    const cola = [...leer('desarrollos-pendientes', []), { id: nuevoId(), alumno: alumno.id, leccion_id: leccionId, pregunta, texto, fecha: new Date().toISOString() }]
+    guardar('desarrollos-pendientes', cola)
+    setEscritasCola(cola)
+    apuntar(leccionId, { empezada: true })
+    sincronizar()
+  }
+  const escritasDe = (leccionId) => {
+    const delServidor = escritas.filter(d => d.leccion_id === leccionId)
+    const ids = new Set(delServidor.map(d => d.id))
+    return [...delServidor, ...escritasCola.filter(d => d.alumno === alumno.id && d.leccion_id === leccionId && !ids.has(d.id)).map(d => ({ ...d, enCola: true }))]
+  }
+
   if (otraClase) {
     return <AlumnoOtraClase alumno={alumno} onVolver={() => setOtraClase(false)} onDentro={() => { setOtraClase(false); sincronizar() }} />
   }
 
-  const barra = <BarraEnvio estado={estado} pendientes={pendientes} />
+  const barra = <BarraEnvio estado={estado} pendientes={pendientes + escritasCola.length} />
   if (leccion) {
     return (
       <>
         {barra}
-        <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
-          onRespuesta={() => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true }) }}
+        <AlumnoLeccion leccion={leccion} alumnoId={alumno.id} hecho={progreso[leccion.id]} onVolver={() => { setLeccion(null); window.scrollTo(0, 0) }}
+          onRespuesta={(extra) => { setPendientes(leer('pendientes', []).length); apuntar(leccion.id, { empezada: true, ...extra }) }}
           onTerminar={(aciertos, total) => { apuntar(leccion.id, { hecha: true, aciertos, total }); sincronizar() }}
-          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} onQuitar={quitarDuda} />
+          dudas={dudasDe(leccion.id)} sinConexion={estado === 'sin-conexion'} onPreguntar={(texto) => preguntar(leccion.id, texto)} onQuitar={quitarDuda}
+          escritas={escritasDe(leccion.id)} onEscribir={(i, texto) => escribir(leccion.id, i, texto)} />
       </>
     )
   }
@@ -1733,6 +1985,7 @@ function AlumnoCasa({ alumno, onSalir }) {
                           <span className="fila-texto">
                             <span className="fila-titulo">{l.titulo}</span>
                             <span className="fila-detalle">
+                              {l.contenido?.tipo === 'examen' && <span className="insignia insignia-amarilla">{t('Examen')}</span>}
                               <span className="descargada"><IconoDescargado tam={18} />{t('Descargada')}</span>
                               {p?.hecha
                                 ? <span className="descargada"><Icono nombre="bien" tam={18} />{t('Hecha · {a} de {b}', { a: p.aciertos, b: p.total })}</span>
@@ -1798,31 +2051,42 @@ function AlumnoOtraClase({ alumno, onVolver, onDentro }) {
   )
 }
 
-// La lección es un camino de 3 pasos: leer, ver un ejemplo y contestar las preguntas.
-function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar, onQuitar }) {
+// La lección es un camino de pasos: leer, ver un ejemplo y las pruebas que haya marcado el profe.
+// El examen es solo sus preguntas: no enseña la solución, sigue por donde se iba y se hace una sola vez.
+function AlumnoLeccion({ leccion, alumnoId, hecho, onVolver, onRespuesta, onTerminar, dudas, sinConexion, onPreguntar, onQuitar, escritas, onEscribir }) {
   const { lectura_facil, explicacion_ejemplo, preguntas } = leccion.contenido
+  const examen = leccion.contenido.tipo === 'examen'
+  const desarrollo = leccion.contenido.desarrollo || []
+  const palabras = leccion.contenido.palabras || []
+  const juegos = palabras.length >= 3 ? leccion.contenido.juegos || [] : []
+  const pasos = [
+    ...(examen ? [] : [['leer', t('Leer')], ['ejemplo', t('Ejemplo')]]),
+    ...(preguntas.length ? [['preguntas', examen ? t('Test') : t('Preguntas')]] : []),
+    ...(juegos.includes('sopa') ? [['sopa', t('Sopa de letras')]] : []),
+    ...(juegos.includes('crucigrama') ? [['crucigrama', t('Crucigrama')]] : []),
+    ...(desarrollo.length ? [['desarrollo', t('Escribir')]] : []),
+  ]
   const [paso, setPaso] = useState(0)
-  const [n, setN] = useState(0)
+  const [n, setN] = useState(examen && !hecho?.hecha ? Math.max(0, Math.min(hecho?.siguiente || 0, preguntas.length - 1)) : 0)
   const [elegida, setElegida] = useState(null)
   const [respondida, setRespondida] = useState(false)
-  const [aciertos, setAciertos] = useState(0)
-  const [terminado, setTerminado] = useState(false)
-  const conTest = preguntas.length > 0 // el profe puede hacer lecciones sin preguntas
+  const [aciertos, setAciertos] = useState(examen ? hecho?.aciertos || 0 : 0)
+  const [terminado, setTerminado] = useState(examen && !!hecho?.hecha)
+  const que = pasos[paso][0]
+  const ultimo = paso === pasos.length - 1
   const pregunta = preguntas[n] || { pregunta: '', opciones: [], correcta: 0 }
   const acierto = elegida === pregunta.correcta
 
   const irA = (p) => { setPaso(p); window.scrollTo(0, 0) }
+  const textoSeguir = ultimo ? t('Volver a mis lecciones') : que === 'leer' ? t('Ya lo he leído')
+    : pasos[paso + 1][0] === 'preguntas' ? t('Ir a las preguntas') : t('Seguir: {paso}', { paso: pasos[paso + 1][1] })
+  const seguir = (
+    <button onClick={() => ultimo ? onVolver() : irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
+      {textoSeguir}<Icono nombre="seguir" />
+    </button>
+  )
 
-  const responder = () => {
-    if (acierto) setAciertos(a => a + 1)
-    const pendientes = leer('pendientes', [])
-    pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
-    guardar('pendientes', pendientes)
-    onRespuesta()
-    setRespondida(true)
-  }
-
-  const siguiente = () => {
+  const siguiente = (total = aciertos) => {
     window.scrollTo(0, 0)
     if (n < preguntas.length - 1) {
       setN(n + 1)
@@ -1830,56 +2094,73 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
       setRespondida(false)
     } else {
       setTerminado(true)
-      onTerminar(aciertos, preguntas.length) // si hay conexión, la nota le llega al profe ya
+      onTerminar(total, preguntas.length) // si hay conexión, la nota le llega al profe ya
     }
   }
 
+  const responder = () => {
+    const total = aciertos + (acierto ? 1 : 0)
+    setAciertos(total)
+    const pendientes = leer('pendientes', [])
+    pendientes.push({ id: nuevoId(), alumno: alumnoId, leccion_id: leccion.id, pregunta: n, respuesta: elegida, fecha: new Date().toISOString() })
+    guardar('pendientes', pendientes)
+    onRespuesta(examen ? { siguiente: n + 1, aciertos: total } : {})
+    if (examen) siguiente(total) // en el examen no se ve si está bien: se pasa a la siguiente
+    else setRespondida(true)
+  }
+
   const repetir = () => { setN(0); setElegida(null); setRespondida(false); setAciertos(0); setTerminado(false); window.scrollTo(0, 0) }
+  const conDudas = !examen // en el examen no se pregunta a Mochila
 
   return (
     <div className="pagina">
-      <header className="cabecera"><Volver onClick={onVolver}>{t('Mis lecciones')}</Volver></header>
+      <header className="cabecera">
+        <Volver onClick={onVolver}>{t('Mis lecciones')}</Volver>
+        {examen && <span className="insignia insignia-amarilla">{t('Examen')}</span>}
+      </header>
       <h1 className="titulo">{leccion.titulo}</h1>
 
-      <nav className="pasos" aria-label={t('Pasos de la lección')}>
-        {[t('Leer'), t('Ejemplo'), t('Preguntas')].slice(0, conTest ? 3 : 2).map((nombre, i) => (
-          <button key={i} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
-            className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {nombre}</button>
-        ))}
-      </nav>
+      {pasos.length > 1 && (
+        <nav className="pasos" aria-label={t('Pasos de la lección')} style={{ gridTemplateColumns: `repeat(${pasos.length}, 1fr)` }}>
+          {pasos.map(([, nombre], i) => (
+            <button key={i} onClick={() => irA(i)} aria-current={i === paso ? 'step' : undefined}
+              className={`paso ${i === paso ? 'paso-actual' : i < paso ? 'paso-hecho' : ''}`}>{i + 1}. {nombre}</button>
+          ))}
+        </nav>
+      )}
 
-      {paso < 2 && (
+      {(que === 'leer' || que === 'ejemplo') && (
         <>
           <article className="hoja">
-            <div className="hoja-arriba"><Escuchar key={paso} texto={paso === 0 ? lectura_facil : explicacion_ejemplo} lengua={leccion.contenido.idioma} /></div>
-            <p className="hoja-texto">{paso === 0 ? lectura_facil : explicacion_ejemplo}</p>
+            <div className="hoja-arriba"><Escuchar key={paso} texto={que === 'leer' ? lectura_facil : explicacion_ejemplo} lengua={leccion.contenido.idioma} /></div>
+            <p className="hoja-texto">{que === 'leer' ? lectura_facil : explicacion_ejemplo}</p>
           </article>
-          <button onClick={() => paso === 1 && !conTest ? onVolver() : irA(paso + 1)} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 24 }}>
-            {paso === 0 ? t('Ya lo he leído') : conTest ? t('Ir a las preguntas') : t('Volver a mis lecciones')}<Icono nombre="seguir" />
-          </button>
+          {seguir}
           <Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} />
         </>
       )}
 
-      {paso === 2 && terminado && (
+      {que === 'preguntas' && terminado && (
         <div className="resultado">
-          <p className="pregunta-num">{t('Tu resultado')}</p>
+          <p className="pregunta-num">{examen ? t('Tu resultado en el test') : t('Tu resultado')}</p>
           <p className="resultado-cifra"><mark>{t('{a} de {b}', { a: aciertos, b: preguntas.length })}</mark></p>
-          <p className="resultado-texto">{aciertos === preguntas.length ? t('¡Perfecto! Las has acertado todas.')
-            : aciertos >= Math.ceil(preguntas.length * 0.6) ? t('Muy bien. Repasa las que has fallado.')
-              : t('Vuelve a leer la lección y prueba otra vez.')}</p>
+          <p className="resultado-texto">{examen ? t('Has terminado el test. Tu profe verá tu nota.')
+            : aciertos === preguntas.length ? t('¡Perfecto! Las has acertado todas.')
+              : aciertos >= Math.ceil(preguntas.length * 0.6) ? t('Muy bien. Repasa las que has fallado.')
+                : t('Vuelve a leer la lección y prueba otra vez.')}</p>
           <div className="botones">
-            <button onClick={onVolver} className="boton boton-principal boton-ancho boton-grande">{t('Volver a mis lecciones')}</button>
-            <button onClick={repetir} className="boton boton-secundario boton-ancho">{t('Repetir las preguntas')}</button>
-            <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">{t('Volver a leer')}</button>
+            {ultimo ? <button onClick={onVolver} className="boton boton-principal boton-ancho boton-grande">{t('Volver a mis lecciones')}</button> : seguir}
+            {!examen && <button onClick={repetir} className="boton boton-secundario boton-ancho">{t('Repetir las preguntas')}</button>}
+            {!examen && <button onClick={() => irA(0)} className="boton boton-fantasma boton-ancho">{t('Volver a leer')}</button>}
           </div>
           <p className="nota">{t('Tus respuestas le llegan a tu profe cuando hay conexión.')}</p>
-          <div style={{ textAlign: 'start' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} /></div>
+          {conDudas && <div style={{ textAlign: 'start' }}><Dudas dudas={dudas} contenido={leccion.contenido} sinConexion={sinConexion} onPreguntar={onPreguntar} onQuitar={onQuitar} /></div>}
         </div>
       )}
 
-      {paso === 2 && !terminado && (
+      {que === 'preguntas' && !terminado && (
         <>
+          {examen && n === 0 && <p className="aviso aviso-atencion">{t('Es un examen: piensa bien cada respuesta. No se puede repetir.')}</p>}
           <p className="pregunta-num">{t('Pregunta {a} de {b}', { a: n + 1, b: preguntas.length })}</p>
           <h2 className="pregunta-texto">{pregunta.pregunta}</h2>
           <div className="opciones">
@@ -1898,7 +2179,11 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
             })}
           </div>
           {!respondida
-            ? <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>{t('Comprobar')}</button>
+            ? (
+              <button onClick={responder} disabled={elegida === null} className="boton boton-principal boton-ancho boton-grande" style={{ marginTop: 22 }}>
+                {!examen ? t('Comprobar') : n < preguntas.length - 1 ? t('Siguiente pregunta') : t('Terminar el test')}
+              </button>
+            )
             : (
               <>
                 <div role="status" className={`aviso ${acierto ? 'aviso-ok' : 'aviso-error'}`} style={{ marginTop: 22 }}>
@@ -1906,14 +2191,72 @@ function AlumnoLeccion({ leccion, alumnoId, onVolver, onRespuesta, onTerminar, d
                   {!acierto && <span style={{ display: 'block', marginTop: 4 }}>{t('La buena es la {letra}: «{texto}»', { letra: 'ABCD'[pregunta.correcta], texto: pregunta.opciones[pregunta.correcta] })}</span>}
                   {pregunta.porque && <span style={{ display: 'block', marginTop: 6 }}>{pregunta.porque}</span>}
                 </div>
-                <button onClick={siguiente} className="boton boton-principal boton-ancho boton-grande">
+                <button onClick={() => siguiente()} className="boton boton-principal boton-ancho boton-grande">
                   {n < preguntas.length - 1 ? t('Siguiente pregunta') : t('Ver mi resultado')}<Icono nombre="seguir" />
                 </button>
               </>
             )}
         </>
       )}
+
+      {que === 'sopa' && <SopaDeLetras palabras={palabras} semilla={leccion.id} siguiente={seguir} />}
+      {que === 'crucigrama' && <Crucigrama palabras={palabras} siguiente={seguir} />}
+      {que === 'desarrollo' && <Escribir preguntas={desarrollo} escritas={escritas} lengua={leccion.contenido.idioma} sinConexion={sinConexion} onEscribir={onEscribir} siguiente={seguir} />}
     </div>
+  )
+}
+
+// Preguntas de desarrollo: el estudiante escribe su respuesta (también sin conexión) y la envía una sola vez.
+// Le llega la nota de Mochila y, si el profe la cambia, la del profe.
+function Escribir({ preguntas, escritas, lengua, sinConexion, onEscribir, siguiente }) {
+  const [textos, setTextos] = useState({})
+  const enviar = (i) => {
+    if (window.confirm(t('¿Enviar tu respuesta? Después no la podrás cambiar.'))) onEscribir(i, textos[i].trim())
+  }
+
+  return (
+    <>
+      <p className="frase" style={{ marginTop: 0 }}>{t('Contesta con tus palabras. Tu respuesta le llega a tu profe, y Mochila te dice qué tal está.')}</p>
+      {preguntas.map((p, i) => {
+        const hecha = escritas.find(e => e.pregunta === i)
+        const conNota = hecha && hecha.nota !== null && hecha.nota !== undefined
+        return (
+          <div key={i} className="tarjeta" style={{ marginBottom: 16 }}>
+            <p className="pregunta-num">{t('Pregunta {a} de {b}', { a: i + 1, b: preguntas.length })}</p>
+            <h2 className="duda-pregunta" style={{ margin: '6px 0 10px' }}>{p.pregunta}</h2>
+            <Escuchar texto={p.pregunta} lengua={lengua} />
+            {hecha
+              ? (
+                <>
+                  <p className="escrito">{hecha.texto}</p>
+                  {conNota
+                    ? (
+                      <div className={`aviso ${hecha.nota >= 5 ? 'aviso-ok' : 'aviso-atencion'}`} style={{ marginTop: 12 }}>
+                        <span className="nota-grande">{t('{n} de 10', { n: hecha.nota })}</span>
+                        {hecha.comentario && <span style={{ display: 'block', marginTop: 6 }}>{hecha.comentario}</span>}
+                        <span style={{ display: 'block', marginTop: 6, fontSize: 16 }}>{hecha.corregida ? t('Te lo ha corregido tu profe.') : t('Te lo ha corregido Mochila. Tu profe lo puede cambiar.')}</span>
+                      </div>
+                    )
+                    : <p className="nota" style={{ marginTop: 10 }}>{hecha.enCola
+                      ? (sinConexion ? t('Se enviará cuando haya conexión.') : t('Enviando…'))
+                      : hecha.para_el_profe ? t('Te la corregirá tu profe.') : t('Enviada. Mochila la está corrigiendo.')}</p>}
+                </>
+              )
+              : (
+                <>
+                  <label htmlFor={`escribir-${i}`} className="etiqueta" style={{ marginTop: 14, fontSize: 17 }}>{t('Tu respuesta')}</label>
+                  <textarea id={`escribir-${i}`} className="campo" rows={5} maxLength={3000} value={textos[i] || ''}
+                    onChange={e => setTextos(x => ({ ...x, [i]: e.target.value }))} />
+                  <button onClick={() => enviar(i)} disabled={(textos[i] || '').trim().length < 3} className="boton boton-secundario boton-ancho" style={{ marginTop: 12 }}>
+                    {t('Enviar mi respuesta')}
+                  </button>
+                </>
+              )}
+          </div>
+        )
+      })}
+      {siguiente}
+    </>
   )
 }
 
