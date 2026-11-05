@@ -303,6 +303,59 @@ function ProfeEntrar({ onEntrar, onVolver }) {
   )
 }
 
+// Buscar alumnos para meterlos en la clase nueva: los de tus otras clases por nombre o usuario, y cualquier otro con su usuario exacto.
+function ElegirAlumnos({ elegidos, onCambio }) {
+  const [buscado, setBuscado] = useState('')
+  const [encontrados, setEncontrados] = useState([])
+  const [aviso, setAviso] = useState('')
+
+  useEffect(() => {
+    const q = buscado.trim()
+    if (!q) { setEncontrados([]); setAviso(''); return }
+    let vale = true
+    const espera = setTimeout(() => {
+      api(`/api/profes/alumnos?q=${encodeURIComponent(q)}`)
+        .then(r => { if (vale) { setEncontrados(r); setAviso(r.length ? '' : 'No hay nadie con ese nombre en tus clases. Si es nuevo, escribe su usuario exacto.') } })
+        .catch(e => { if (vale) { setEncontrados([]); setAviso(esPasajero(e) ? 'Para buscar alumnos hace falta conexión.' : e.message) } })
+    }, 300) // espera a que acabe de escribir
+    return () => { vale = false; clearTimeout(espera) }
+  }, [buscado])
+
+  const quedan = encontrados.filter(a => !elegidos.some(e => e.id === a.id))
+  return (
+    <div className="campo-grupo">
+      <label htmlFor="buscar-alumnos" className="etiqueta">{t('Alumnos (si quieres)')}</label>
+      <input id="buscar-alumnos" className="campo" type="search" value={buscado} onChange={e => setBuscado(e.target.value)}
+        autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder={t('Busca por nombre o usuario')} />
+      {aviso && <p className="pista">{t(aviso)}</p>}
+      {quedan.length > 0 && (
+        <div className="elegir-lista">
+          {quedan.map(a => (
+            <button key={a.id} type="button" className="boton boton-secundario boton-pequeno elegir-alumno" onClick={() => onCambio([...elegidos, a])}>
+              <Icono nombre="mas" tam={20} /><span className="elegir-texto">{a.nombre} <span className="nota">· {a.usuario}</span></span>
+            </button>
+          ))}
+        </div>
+      )}
+      {elegidos.length > 0 && (
+        <>
+          <p className="subtitulo" style={{ margin: '16px 0 8px' }}>{plural(elegidos.length, 'Entra {n} alumno', 'Entran {n} alumnos')}</p>
+          <div className="elegir-lista">
+            {elegidos.map(a => (
+              <span key={a.id} className="elegido">
+                <Avatar nombre={a.nombre} tam={32} />
+                <span className="elegir-texto">{a.nombre} <span className="nota">· {a.usuario}</span></span>
+                <button type="button" className="elegido-quitar" onClick={() => onCambio(elegidos.filter(e => e.id !== a.id))}
+                  aria-label={t('Quitar a {nombre}', { nombre: a.nombre })}><Icono nombre="mal" tam={20} /></button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ProfeClases({ profe, onAbrir, onSalir }) {
   const [clases, setClases] = useState(() => leer('profe-clases', null)) // la copia de la última vez, al momento
   const [nombre, setNombre] = useState('')
@@ -310,6 +363,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [creando, setCreando] = useState(false)
+  const [elegidos, setElegidos] = useState([]) // alumnos que entran ya en la clase nueva
 
   useEffect(() => {
     api('/api/profes/clases').then(c => { setClases(c); guardar('profe-clases', c) }).catch(e => {
@@ -326,7 +380,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
     setError('')
     setCreando(true)
     try {
-      const clase = await api('/api/clases', { method: 'POST', body: { nombre } })
+      const clase = await api('/api/clases', { method: 'POST', body: { nombre, alumnos: elegidos.map(a => a.id) } })
       onAbrir(clase.codigo)
     } catch (e) {
       setError(e.message)
@@ -406,6 +460,7 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
         </div>
       )}
 
+      <div className="lado-a-lado">
       <section className="seccion">
         <h2 className="seccion-titulo">{hay ? t('Crear otra clase') : t('Crea tu primera clase')}</h2>
         <form onSubmit={crear} className="tarjeta formulario">
@@ -413,15 +468,16 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
             <label htmlFor="nombre-clase" className="etiqueta">{t('Nombre de la clase')}</label>
             <input id="nombre-clase" className="campo" value={nombre} onChange={e => setNombre(e.target.value)} maxLength={60} placeholder={t('Por ejemplo: 5.º A · Ciencias')} />
           </div>
+          <ElegirAlumnos elegidos={elegidos} onCambio={setElegidos} />
           <button type="submit" disabled={!nombre.trim() || creando} className={`boton boton-ancho ${hay ? 'boton-secundario' : 'boton-principal'}`}>
             {creando ? t('Creando…') : t('Crear la clase')}
           </button>
         </form>
       </section>
 
-      <details className="seccion">
-        <summary className="seccion-titulo" style={{ cursor: 'pointer' }}>{t('¿Tienes una clase de antes, con PIN?')}</summary>
-        <form onSubmit={traer} className="tarjeta formulario" style={{ marginTop: 12 }}>
+      <section className="seccion">
+        <h2 className="seccion-titulo">{t('¿Tienes una clase de antes, con PIN?')}</h2>
+        <form onSubmit={traer} className="tarjeta formulario">
           <div className="campo-grupo">
             <label htmlFor="codigo-traer" className="etiqueta">{t('Código de la clase')}</label>
             <input id="codigo-traer" className="campo campo-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} maxLength={12}
@@ -434,7 +490,8 @@ function ProfeClases({ profe, onAbrir, onSalir }) {
           </div>
           <button type="submit" disabled={limpiarCodigo(codigo).length !== 6 || !pinValido(pin)} className="boton boton-secundario boton-ancho">{t('Añadirla a mis clases')}</button>
         </form>
-      </details>
+      </section>
+      </div>
     </div>
   )
 }

@@ -607,6 +607,7 @@ def salud():
 class NuevaClase(BaseModel):
     nombre: str
     pin: str = ""  # sin PIN solo si la crea un profe con su sesión: entonces la clase es suya
+    alumnos: list[str] = []  # ids de alumnos que el profe mete ya en la clase (solo con su sesión)
 
 
 @app.post("/api/clases")
@@ -625,6 +626,10 @@ def crear_clase(datos: NuevaClase, x_sesion_profe: str | None = Header(default=N
         c.execute("INSERT INTO clases (codigo, nombre, creada) VALUES (?, ?, ?)", (codigo, nombre, ahora()))
         if profe:
             c.execute("INSERT INTO clases_profe (clase, profe) VALUES (?, ?)", (codigo, profe))
+            # Solo alumnos con usuario (como en «unirse»); un id que no existe se ignora.
+            c.executemany("""INSERT OR IGNORE INTO matriculas (clase, alumno, fecha)
+                             SELECT ?, alumno, ? FROM cuentas_alumno WHERE alumno = ?""",
+                          [(codigo, ahora(), a) for a in datos.alumnos[:200]])
         else:
             guardar_pin(c, codigo, datos.pin)
     return {"codigo": codigo, "nombre": nombre}
@@ -689,6 +694,24 @@ def entrar_profe(datos: Entrar):
 def clases_del_profe(profe: str = Depends(solo_con_sesion)):
     with closing(db()) as c:
         return resumen_clases(c, profe)
+
+
+@app.get("/api/profes/alumnos")
+def buscar_alumnos(q: str = "", profe: str = Depends(solo_con_sesion)):
+    """Para meter alumnos en una clase nueva. Busca por nombre o usuario entre los alumnos de las clases de este profe;
+    a cualquier otro alumno solo se le encuentra escribiendo su usuario exacto (así no se puede ver la lista de todos)."""
+    q = " ".join(q.split())[:40]
+    if not q:
+        return []
+    parecido = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    with closing(db()) as c:
+        return [dict(f) for f in c.execute(r"""
+            SELECT a.id, a.nombre, cu.usuario FROM alumnos a JOIN cuentas_alumno cu ON cu.alumno = a.id
+            WHERE cu.usuario = :exacto
+               OR ((a.nombre LIKE :parecido ESCAPE '\' OR cu.usuario LIKE :parecido ESCAPE '\')
+                   AND a.id IN (SELECT m.alumno FROM matriculas m JOIN clases_profe p ON p.clase = m.clase WHERE p.profe = :profe))
+            ORDER BY cu.usuario = :exacto DESC, a.nombre COLLATE NOCASE LIMIT 20
+        """, {"exacto": normalizar_usuario(q), "parecido": parecido, "profe": profe}).fetchall()]
 
 
 class TraerClase(BaseModel):
